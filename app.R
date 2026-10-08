@@ -1,12 +1,17 @@
 # ============================================================
-# INSTAGRAM ANALYTICS
-# Big Data Analytics Project
-# Interactive R Shiny Dashboard
+# INSTAGRAM ANALYTICS - BIG DATA ANALYTICS DASHBOARD
+# ============================================================
+# Project:
+# Instagram Analytics: A Big Data Approach to Content
+# Performance and Audience Engagement
+#
+# Technology:
+# R + Shiny + Plotly + DT + dplyr + bslib
 # ============================================================
 
 
 # ============================================================
-# 1. REQUIRED PACKAGES
+# 1. PACKAGES
 # ============================================================
 
 required_packages <- c(
@@ -17,18 +22,16 @@ required_packages <- c(
   "lubridate",
   "plotly",
   "DT",
-  "scales"
+  "scales",
+  "fontawesome"
 )
 
 missing_packages <- required_packages[
-  !required_packages %in% rownames(installed.packages())
+  !sapply(required_packages, requireNamespace, quietly = TRUE)
 ]
 
 if (length(missing_packages) > 0) {
-  install.packages(
-    missing_packages,
-    dependencies = TRUE
-  )
+  install.packages(missing_packages, repos = "https://cloud.r-project.org")
 }
 
 library(shiny)
@@ -39,38 +42,32 @@ library(lubridate)
 library(plotly)
 library(DT)
 library(scales)
+library(fontawesome)
 
 
 # ============================================================
 # 2. LOAD DATA
 # ============================================================
 
-DATA_FILE <- "Instagram_Analytics.csv"
+data_file <- "Instagram_Analytics.csv"
 
-if (!file.exists(DATA_FILE)) {
-  
+if (!file.exists(data_file)) {
   stop(
     paste0(
-      "\nInstagram_Analytics.csv was not found.\n\n",
-      "Make sure the file is in the same folder as app.R.\n\n",
-      "Expected structure:\n",
-      "Instagram_Analytics_Big_Data/\n",
-      "  app.R\n",
-      "  Instagram_Analytics.csv\n",
-      "  www/\n",
-      "    instagram-logo.png\n"
+      "Dataset not found.\n\n",
+      "Please place 'Instagram_Analytics.csv' in the same folder as app.R."
     )
   )
 }
 
-instagram <- read_csv(
-  DATA_FILE,
+instagram_data <- read_csv(
+  data_file,
   show_col_types = FALSE
 )
 
 
 # ============================================================
-# 3. CHECK REQUIRED COLUMNS
+# 3. REQUIRED COLUMNS
 # ============================================================
 
 required_columns <- c(
@@ -101,18 +98,14 @@ required_columns <- c(
 
 missing_columns <- setdiff(
   required_columns,
-  names(instagram)
+  names(instagram_data)
 )
 
 if (length(missing_columns) > 0) {
-  
   stop(
     paste0(
       "The following required columns are missing:\n",
-      paste(
-        missing_columns,
-        collapse = ", "
-      )
+      paste(missing_columns, collapse = ", ")
     )
   )
 }
@@ -137,53 +130,39 @@ numeric_columns <- c(
   "hashtags_count"
 )
 
-instagram <- instagram %>%
-  mutate(
-    across(
-      all_of(numeric_columns),
-      ~ suppressWarnings(
-        as.numeric(.x)
-      )
-    )
+for (col in numeric_columns) {
+  instagram_data[[col]] <- suppressWarnings(
+    as.numeric(instagram_data[[col]])
   )
+}
 
 
-# ------------------------------------------------------------
 # Date conversion
-# ------------------------------------------------------------
-
-instagram$post_date <- suppressWarnings(
-  as.Date(
-    instagram$post_date
-  )
+instagram_data$post_date <- suppressWarnings(
+  as.Date(instagram_data$post_date)
 )
 
-# If post_date failed, try post_datetime
-if (all(is.na(instagram$post_date))) {
+if (all(is.na(instagram_data$post_date))) {
   
-  instagram$post_date <- as.Date(
-    suppressWarnings(
+  instagram_data$post_date <- suppressWarnings(
+    as.Date(
       parse_date_time(
-        instagram$post_datetime,
+        instagram_data$post_datetime,
         orders = c(
           "ymd HMS",
           "ymd HM",
-          "mdy HMS",
-          "mdy HM",
           "dmy HMS",
-          "dmy HM"
-        ),
-        quiet = TRUE
+          "dmy HM",
+          "mdy HMS",
+          "mdy HM"
+        )
       )
     )
   )
 }
 
 
-# ------------------------------------------------------------
-# Character columns
-# ------------------------------------------------------------
-
+# Factor / character cleaning
 character_columns <- c(
   "account_type",
   "media_type",
@@ -193,67 +172,67 @@ character_columns <- c(
   "performance_bucket_label"
 )
 
-instagram <- instagram %>%
-  mutate(
-    across(
-      all_of(character_columns),
-      as.character
-    )
+for (col in character_columns) {
+  instagram_data[[col]] <- trimws(
+    as.character(instagram_data[[col]])
   )
+}
+
+
+# CTA normalization
+instagram_data$has_call_to_action <- tolower(
+  trimws(as.character(instagram_data$has_call_to_action))
+)
 
 
 # ============================================================
-# 5. DERIVED ANALYTICS
+# 5. DERIVED METRICS
 # ============================================================
 
-instagram <- instagram %>%
+instagram_data <- instagram_data %>%
   mutate(
     
+    # Total engagement
     total_engagement =
       coalesce(likes, 0) +
       coalesce(comments, 0) +
       coalesce(shares, 0) +
       coalesce(saves, 0),
     
-    engagement_per_reach =
-      if_else(
-        !is.na(reach) &
-          reach > 0,
-        total_engagement / reach,
-        NA_real_
-      ),
+    # Engagement per reach
+    engagement_per_reach = ifelse(
+      !is.na(reach) & reach > 0,
+      total_engagement / reach,
+      NA_real_
+    ),
     
-    save_rate =
-      if_else(
-        !is.na(reach) &
-          reach > 0,
-        saves / reach,
-        NA_real_
-      ),
+    # Save rate
+    save_rate = ifelse(
+      !is.na(reach) & reach > 0,
+      saves / reach,
+      NA_real_
+    ),
     
-    share_rate =
-      if_else(
-        !is.na(reach) &
-          reach > 0,
-        shares / reach,
-        NA_real_
-      ),
+    # Share rate
+    share_rate = ifelse(
+      !is.na(reach) & reach > 0,
+      shares / reach,
+      NA_real_
+    ),
     
-    comment_rate =
-      if_else(
-        !is.na(reach) &
-          reach > 0,
-        comments / reach,
-        NA_real_
-      ),
+    # Comment rate
+    comment_rate = ifelse(
+      !is.na(reach) & reach > 0,
+      comments / reach,
+      NA_real_
+    ),
     
-    follower_conversion =
-      if_else(
-        !is.na(reach) &
-          reach > 0,
-        followers_gained / reach,
-        NA_real_
-      )
+    # Follower conversion
+    follower_conversion = ifelse(
+      !is.na(reach) & reach > 0,
+      followers_gained / reach,
+      NA_real_
+    )
   )
 
 
@@ -261,167 +240,89 @@ instagram <- instagram %>%
 # 6. HELPER FUNCTIONS
 # ============================================================
 
-safe_unique <- function(x) {
-  
-  x <- as.character(x)
-  
-  x <- x[
-    !is.na(x) &
-      trimws(x) != ""
-  ]
-  
-  sort(
-    unique(x)
-  )
-}
-
-
-clean_label <- function(x) {
-  
-  x <- as.character(x)
-  
-  x[is.na(x)] <- ""
-  
-  x <- gsub(
-    "_",
-    " ",
-    x
-  )
-  
-  x <- gsub(
-    "-",
-    " ",
-    x
-  )
-  
-  tools::toTitleCase(x)
-}
-
-
-# ------------------------------------------------------------
-# Scalar compact formatter
-# ------------------------------------------------------------
-
 fmt_compact <- function(x) {
   
-  if (
-    length(x) == 0 ||
-    is.na(x) ||
-    !is.finite(x)
-  ) {
+  if (length(x) == 0 || is.na(x[1])) {
     return("0")
   }
   
-  if (x >= 1000000000) {
-    
+  x <- x[1]
+  
+  if (abs(x) >= 1000000000) {
     return(
       paste0(
-        format(
-          round(
-            x / 1000000000,
-            1
-          ),
-          trim = TRUE,
-          scientific = FALSE
-        ),
+        format(round(x / 1000000000, 1), nsmall = 1),
         "B"
       )
     )
   }
   
-  if (x >= 1000000) {
-    
+  if (abs(x) >= 1000000) {
     return(
       paste0(
-        format(
-          round(
-            x / 1000000,
-            1
-          ),
-          trim = TRUE,
-          scientific = FALSE
-        ),
+        format(round(x / 1000000, 1), nsmall = 1),
         "M"
       )
     )
   }
   
-  if (x >= 1000) {
-    
+  if (abs(x) >= 1000) {
     return(
       paste0(
-        format(
-          round(
-            x / 1000,
-            1
-          ),
-          trim = TRUE,
-          scientific = FALSE
-        ),
+        format(round(x / 1000, 1), nsmall = 1),
         "K"
       )
     )
   }
   
-  comma(
-    round(x)
+  format(round(x, 0), big.mark = ",")
+}
+
+
+fmt_integer <- function(x) {
+  
+  if (length(x) == 0 || is.na(x[1])) {
+    return("0")
+  }
+  
+  format(
+    round(x[1], 0),
+    big.mark = ",",
+    scientific = FALSE
   )
 }
 
 
-# ------------------------------------------------------------
 # Scalar percentage formatter
-# ------------------------------------------------------------
-
-fmt_percent <- function(
-    x,
-    digits = 2
-) {
+fmt_pct <- function(x, digits = 2) {
   
-  if (
-    length(x) == 0 ||
-    is.na(x) ||
-    !is.finite(x)
-  ) {
+  if (length(x) == 0 || is.na(x[1])) {
     return("0%")
   }
   
   paste0(
-    formatC(
-      x * 100,
-      format = "f",
-      digits = digits
+    format(
+      round(x[1] * 100, digits),
+      nsmall = digits
     ),
     "%"
   )
 }
 
 
-# ------------------------------------------------------------
-# VECTOR-SAFE percentage formatter
-# This is important for Plotly.
-# ------------------------------------------------------------
-
-fmt_percent_vec <- function(
-    x,
-    digits = 2
-) {
+# Vector-safe percentage formatter
+fmt_pct_vec <- function(x, digits = 2) {
   
-  result <- rep(
-    "0%",
-    length(x)
-  )
+  result <- rep("0%", length(x))
   
-  valid <- !is.na(x) &
-    is.finite(x)
+  valid <- !is.na(x)
   
   if (any(valid)) {
-    
     result[valid] <- paste0(
-      formatC(
-        x[valid] * 100,
-        format = "f",
-        digits = digits
+      format(
+        round(x[valid] * 100, digits),
+        nsmall = digits,
+        trim = TRUE
       ),
       "%"
     )
@@ -431,1343 +332,459 @@ fmt_percent_vec <- function(
 }
 
 
-# ------------------------------------------------------------
-# Safe mean
-# ------------------------------------------------------------
-
 safe_mean <- function(x) {
   
-  value <- mean(
-    x,
-    na.rm = TRUE
-  )
-  
-  if (
-    length(value) == 0 ||
-    is.nan(value) ||
-    !is.finite(value)
-  ) {
-    
+  if (length(x) == 0 || all(is.na(x))) {
     return(0)
   }
   
-  value
+  mean(x, na.rm = TRUE)
 }
 
 
-# ------------------------------------------------------------
-# Empty plot message
-# ------------------------------------------------------------
-
-empty_plot <- function(
-    message = "No data available"
-) {
+safe_sum <- function(x) {
   
-  plot_ly() %>%
-    
-    layout(
-      
-      xaxis = list(
-        visible = FALSE
-      ),
-      
-      yaxis = list(
-        visible = FALSE
-      ),
-      
-      annotations = list(
-        list(
-          text = message,
-          x = 0.5,
-          y = 0.5,
-          xref = "paper",
-          yref = "paper",
-          showarrow = FALSE,
-          font = list(
-            size = 14,
-            color = "#98A2B3"
-          )
-        )
-      ),
-      
-      paper_bgcolor = "rgba(0,0,0,0)",
-      
-      plot_bgcolor = "rgba(0,0,0,0)"
-    )
+  if (length(x) == 0 || all(is.na(x))) {
+    return(0)
+  }
+  
+  sum(x, na.rm = TRUE)
+}
+
+
+clean_label <- function(x) {
+  
+  x <- as.character(x)
+  
+  x <- gsub("_", " ", x)
+  
+  tools::toTitleCase(x)
 }
 
 
 # ============================================================
-# 7. THEME
+# 7. UI
 # ============================================================
 
-theme <- bs_theme(
+ui <- page_fillable(
   
-  version = 5,
-  
-  bg = "#F5F6FA",
-  
-  fg = "#172033",
-  
-  primary = "#7C3AED",
-  
-  secondary = "#64748B",
-  
-  success = "#10B981",
-  
-  info = "#0EA5E9",
-  
-  warning = "#F59E0B",
-  
-  danger = "#EF4444",
-  
-  border_radius = "14px",
-  
-  font_scale = 0.94
-)
-
-
-# ============================================================
-# 8. USER INTERFACE
-# ============================================================
-
-ui <- page_fluid(
-  
-  theme = theme,
-  
-  # ==========================================================
-  # HEAD
-  # ==========================================================
+  theme = bs_theme(
+    version = 5,
+    bootswatch = "flatly",
+    primary = "#E1306C",
+    secondary = "#833AB4",
+    success = "#2E7D32",
+    info = "#1565C0",
+    base_font = font_google("Inter"),
+    heading_font = font_google("Inter")
+  ),
   
   tags$head(
     
-    tags$title(
-      "Instagram Analytics | Big Data Analytics"
+    tags$meta(
+      name = "viewport",
+      content = "width=device-width, initial-scale=1"
     ),
     
-    tags$link(
-      rel = "preconnect",
-      href = "https://fonts.googleapis.com"
-    ),
-    
-    tags$link(
-      rel = "preconnect",
-      href = "https://fonts.gstatic.com",
-      crossorigin = "anonymous"
-    ),
-    
-    tags$link(
-      href =
-        "https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap",
-      rel = "stylesheet"
-    ),
-    
-    tags$style(
-      HTML(
-        
-        "
-        /* ===================================================
-           GLOBAL
-        =================================================== */
+    tags$style(HTML("
+      
+      /* =====================================================
+         GLOBAL
+         ===================================================== */
 
-        html,
-        body {
+      body {
+        background:
+          linear-gradient(
+            180deg,
+            #faf9fc 0%,
+            #f5f4f8 100%
+          );
+        color: #202124;
+        font-family: Inter, Arial, sans-serif;
+      }
 
-          background: #F5F6FA !important;
+      .container-fluid {
+        max-width: 1600px;
+        margin: auto;
+        padding-left: 24px;
+        padding-right: 24px;
+      }
 
-          color: #172033;
+      /* =====================================================
+         HERO
+         ===================================================== */
 
-          font-family: 'Inter', sans-serif;
+      .hero {
+        margin-top: 22px;
+        margin-bottom: 18px;
+        padding: 28px 32px;
+        border-radius: 22px;
+        background:
+          linear-gradient(
+            115deg,
+            #833AB4 0%,
+            #C13584 38%,
+            #E1306C 68%,
+            #F77737 100%
+          );
+        color: white;
+        box-shadow:
+          0 14px 40px rgba(75, 35, 100, 0.18);
+        position: relative;
+        overflow: hidden;
+      }
 
-          margin: 0;
+      .hero:after {
+        content: '';
+        position: absolute;
+        width: 280px;
+        height: 280px;
+        right: -80px;
+        top: -130px;
+        border-radius: 50%;
+        background: rgba(255,255,255,0.10);
+      }
 
-          padding: 0;
+      .hero-inner {
+        display: flex;
+        align-items: center;
+        gap: 22px;
+        position: relative;
+        z-index: 2;
+      }
+
+      .hero-logo {
+        width: 74px;
+        height: 74px;
+        object-fit: contain;
+        background: rgba(255,255,255,0.14);
+        border-radius: 19px;
+        padding: 11px;
+        backdrop-filter: blur(10px);
+      }
+
+      .hero-logo-fallback {
+        width: 74px;
+        height: 74px;
+        border-radius: 19px;
+        background: rgba(255,255,255,0.16);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 34px;
+        font-weight: 800;
+      }
+
+      .hero-title {
+        font-size: 31px;
+        font-weight: 800;
+        letter-spacing: -0.8px;
+        margin: 0;
+      }
+
+      .hero-subtitle {
+        font-size: 15px;
+        opacity: 0.90;
+        margin-top: 6px;
+        margin-bottom: 0;
+      }
+
+      .hero-badge {
+        margin-left: auto;
+        background: rgba(255,255,255,0.15);
+        border: 1px solid rgba(255,255,255,0.22);
+        border-radius: 12px;
+        padding: 10px 15px;
+        font-size: 12px;
+        font-weight: 700;
+        white-space: nowrap;
+      }
+
+      /* =====================================================
+         FILTER PANEL
+         ===================================================== */
+
+      .filter-panel {
+        background: white;
+        border: 1px solid #ebe8ef;
+        border-radius: 18px;
+        padding: 18px 20px 15px 20px;
+        box-shadow: 0 5px 18px rgba(25,20,40,0.05);
+        margin-bottom: 18px;
+      }
+
+      .filter-title {
+        font-size: 13px;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        font-weight: 800;
+        color: #6d6875;
+        margin-bottom: 12px;
+      }
+
+      .form-group {
+        margin-bottom: 9px;
+      }
+
+      .control-label {
+        font-size: 12px;
+        font-weight: 700;
+        color: #55515d;
+        margin-bottom: 5px;
+      }
+
+      .form-control,
+      .selectize-input {
+        border-radius: 10px !important;
+        border: 1px solid #dedbe4 !important;
+        min-height: 39px;
+        box-shadow: none !important;
+        font-size: 13px;
+      }
+
+      .selectize-input.focus {
+        border-color: #C13584 !important;
+      }
+
+      .reset-btn {
+        width: 100%;
+        margin-top: 23px;
+        border-radius: 10px;
+        font-weight: 700;
+      }
+
+      .download-btn {
+        width: 100%;
+        margin-top: 8px;
+        border-radius: 10px;
+        font-weight: 700;
+      }
+
+      /* =====================================================
+         KPI CARDS
+         ===================================================== */
+
+      .kpi-grid {
+        display: grid;
+        grid-template-columns:
+          repeat(6, minmax(0, 1fr));
+        gap: 12px;
+        margin-bottom: 18px;
+      }
+
+      .kpi-card {
+        background: white;
+        border: 1px solid #ebe8ef;
+        border-radius: 16px;
+        padding: 16px 17px;
+        min-height: 102px;
+        box-shadow: 0 4px 15px rgba(25,20,40,0.045);
+        position: relative;
+        overflow: hidden;
+      }
+
+      .kpi-card:before {
+        content: '';
+        position: absolute;
+        left: 0;
+        top: 0;
+        bottom: 0;
+        width: 4px;
+        background: linear-gradient(
+          180deg,
+          #833AB4,
+          #E1306C,
+          #F77737
+        );
+      }
+
+      .kpi-label {
+        color: #77727e;
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.65px;
+        font-weight: 800;
+      }
+
+      .kpi-value {
+        font-size: 25px;
+        font-weight: 800;
+        color: #242129;
+        margin-top: 8px;
+        letter-spacing: -0.7px;
+      }
+
+      .kpi-description {
+        color: #96919d;
+        font-size: 10px;
+        margin-top: 3px;
+      }
+
+      /* =====================================================
+         SECTION
+         ===================================================== */
+
+      .section-card {
+        background: white;
+        border: 1px solid #ebe8ef;
+        border-radius: 18px;
+        padding: 17px 18px 13px 18px;
+        box-shadow: 0 4px 16px rgba(25,20,40,0.045);
+        margin-bottom: 18px;
+        height: 100%;
+      }
+
+      .section-title {
+        font-size: 14px;
+        font-weight: 800;
+        color: #29252f;
+        margin-bottom: 2px;
+      }
+
+      .section-subtitle {
+        font-size: 11px;
+        color: #918b97;
+        margin-bottom: 8px;
+      }
+
+      .plot-container {
+        width: 100%;
+      }
+
+      /* =====================================================
+         INSIGHTS
+         ===================================================== */
+
+      .insight-box {
+        background: linear-gradient(
+          135deg,
+          #fff7fb,
+          #faf6ff
+        );
+        border: 1px solid #efdce8;
+        border-radius: 15px;
+        padding: 13px 15px;
+        margin-bottom: 9px;
+      }
+
+      .insight-title {
+        font-size: 12px;
+        font-weight: 800;
+        color: #7B2F62;
+        margin-bottom: 3px;
+      }
+
+      .insight-text {
+        font-size: 12px;
+        line-height: 1.55;
+        color: #4c4751;
+      }
+
+      /* =====================================================
+         TABLE
+         ===================================================== */
+
+      .dataTables_wrapper {
+        font-size: 12px;
+      }
+
+      table.dataTable thead th {
+        background: #faf9fb !important;
+        color: #5f5965 !important;
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.4px;
+        border-bottom: 1px solid #e8e4eb !important;
+      }
+
+      table.dataTable tbody td {
+        vertical-align: middle;
+      }
+
+      /* =====================================================
+         FOOTER
+         ===================================================== */
+
+      .footer {
+        text-align: center;
+        padding: 18px 0 28px 0;
+        color: #99939f;
+        font-size: 11px;
+      }
+
+      /* =====================================================
+         RESPONSIVE
+         ===================================================== */
+
+      @media (max-width: 1200px) {
+
+        .kpi-grid {
+          grid-template-columns:
+            repeat(3, minmax(0, 1fr));
         }
 
-        body {
-
-          min-height: 100vh;
-
-          overflow-x: hidden;
+        .hero-badge {
+          display: none;
         }
+      }
+
+      @media (max-width: 768px) {
 
         .container-fluid {
-
-          padding-left: 30px !important;
-
-          padding-right: 30px !important;
+          padding-left: 12px;
+          padding-right: 12px;
         }
-
-        * {
-
-          box-sizing: border-box;
-        }
-
-
-        /* ===================================================
-           HERO
-        =================================================== */
 
         .hero {
-
-          position: relative;
-
-          overflow: hidden;
-
-          margin:
-            0 -30px 20px -30px;
-
-          padding:
-            30px 34px 28px 34px;
-
-          background:
-            linear-gradient(
-              115deg,
-              #16142A 0%,
-              #241940 47%,
-              #3A1459 100%
-            );
-
-          color: white;
-
-          border-radius:
-            0 0 24px 24px;
-
-          box-shadow:
-            0 12px 32px
-            rgba(25, 18, 48, 0.14);
-        }
-
-        .hero::before {
-
-          content: '';
-
-          position: absolute;
-
-          width: 500px;
-
-          height: 500px;
-
-          right: -190px;
-
-          top: -280px;
-
-          border-radius: 50%;
-
-          background:
-            radial-gradient(
-              circle,
-              rgba(236,72,153,0.22),
-              transparent 67%
-            );
-        }
-
-        .hero::after {
-
-          content: '';
-
-          position: absolute;
-
-          width: 300px;
-
-          height: 300px;
-
-          left: 40%;
-
-          bottom: -260px;
-
-          border-radius: 50%;
-
-          background:
-            radial-gradient(
-              circle,
-              rgba(124,58,237,0.24),
-              transparent 68%
-            );
+          padding: 22px;
         }
 
         .hero-inner {
-
-          position: relative;
-
-          z-index: 2;
-
-          display: flex;
-
-          align-items: center;
-
-          justify-content: space-between;
-
-          gap: 25px;
-        }
-
-        .brand-area {
-
-          display: flex;
-
-          align-items: center;
-
-          gap: 16px;
-        }
-
-        .brand-logo {
-
-          width: 54px;
-
-          height: 54px;
-
-          object-fit: contain;
-
-          padding: 7px;
-
-          border-radius: 15px;
-
-          background:
-            rgba(255,255,255,0.09);
-
-          border:
-            1px solid
-            rgba(255,255,255,0.16);
-        }
-
-        .ig-fallback {
-
-          width: 54px;
-
-          height: 54px;
-
-          display: flex;
-
-          align-items: center;
-
-          justify-content: center;
-
-          border-radius: 15px;
-
-          background:
-            linear-gradient(
-              135deg,
-              #F58529,
-              #DD2A7B,
-              #8134AF
-            );
-
-          color: white;
-
-          font-size: 28px;
-
-          font-weight: 700;
-        }
-
-        .eyebrow {
-
-          margin: 0 0 5px 0;
-
-          color:
-            rgba(255,255,255,0.58);
-
-          font-size: 10px;
-
-          font-weight: 800;
-
-          letter-spacing: 0.16em;
-
-          text-transform: uppercase;
+          align-items: flex-start;
         }
 
         .hero-title {
-
-          margin: 0;
-
-          font-family:
-            'Plus Jakarta Sans',
-            'Inter',
-            sans-serif;
-
-          font-size: 29px;
-
-          line-height: 1.15;
-
-          font-weight: 800;
-
-          letter-spacing: -0.04em;
+          font-size: 22px;
         }
 
-        .hero-subtitle {
-
-          margin: 8px 0 0 0;
-
-          max-width: 680px;
-
-          color:
-            rgba(255,255,255,0.68);
-
-          font-size: 12px;
-
-          line-height: 1.55;
+        .hero-logo,
+        .hero-logo-fallback {
+          width: 58px;
+          height: 58px;
         }
-
-        .hero-meta {
-
-          display: flex;
-
-          align-items: center;
-
-          gap: 8px;
-
-          white-space: nowrap;
-        }
-
-        .status-pill {
-
-          display: inline-flex;
-
-          align-items: center;
-
-          gap: 7px;
-
-          padding:
-            9px 12px;
-
-          border-radius: 999px;
-
-          background:
-            rgba(255,255,255,0.08);
-
-          border:
-            1px solid
-            rgba(255,255,255,0.12);
-
-          color:
-            rgba(255,255,255,0.83);
-
-          font-size: 10px;
-
-          font-weight: 700;
-        }
-
-        .status-dot {
-
-          width: 7px;
-
-          height: 7px;
-
-          border-radius: 50%;
-
-          background: #34D399;
-
-          box-shadow:
-            0 0 0 4px
-            rgba(52,211,153,0.12);
-        }
-
-
-        /* ===================================================
-           FILTERS
-        =================================================== */
-
-        .filter-panel {
-
-          background: #FFFFFF;
-
-          border:
-            1px solid #E7E9EF;
-
-          border-radius: 17px;
-
-          padding:
-            16px 17px 15px 17px;
-
-          margin-bottom: 18px;
-
-          box-shadow:
-            0 5px 18px
-            rgba(30,41,59,0.045);
-        }
-
-        .filter-header {
-
-          display: flex;
-
-          justify-content: space-between;
-
-          align-items: center;
-
-          margin-bottom: 12px;
-        }
-
-        .filter-title {
-
-          font-size: 12px;
-
-          font-weight: 800;
-
-          color: #202A3B;
-        }
-
-        .filter-caption {
-
-          color: #98A2B3;
-
-          font-size: 10px;
-        }
-
-        .filter-row {
-
-          display: grid;
-
-          grid-template-columns:
-            1fr
-            1fr
-            1.3fr
-            1.1fr
-            1fr
-            1.3fr
-            auto;
-
-          gap: 10px;
-
-          align-items: end;
-        }
-
-        .filter-item label {
-
-          color: #64748B !important;
-
-          font-size: 9px !important;
-
-          font-weight: 800 !important;
-
-          letter-spacing: 0.07em;
-
-          text-transform: uppercase;
-        }
-
-        .form-control,
-        .selectize-input {
-
-          min-height: 38px !important;
-
-          border:
-            1px solid #E0E4EB !important;
-
-          border-radius:
-            10px !important;
-
-          background:
-            #FAFBFC !important;
-
-          color: #263246 !important;
-
-          box-shadow: none !important;
-
-          font-size: 11px !important;
-        }
-
-        .selectize-input.focus {
-
-          border-color:
-            #9B7BEA !important;
-
-          box-shadow:
-            0 0 0 3px
-            rgba(124,58,237,0.08)
-            !important;
-        }
-
-        .selectize-dropdown {
-
-          border:
-            1px solid #E2E5EC !important;
-
-          border-radius:
-            10px !important;
-
-          box-shadow:
-            0 12px 30px
-            rgba(15,23,42,0.12)
-            !important;
-
-          font-size: 11px !important;
-
-          z-index: 9999 !important;
-        }
-
-        .selectize-dropdown
-        .option.active {
-
-          background:
-            #F1ECFF !important;
-
-          color:
-            #6D28D9 !important;
-        }
-
-        .date-input {
-
-          width: 100%;
-        }
-
-
-        /* ===================================================
-           BUTTONS
-        =================================================== */
-
-        .action-btn {
-
-          min-height: 38px !important;
-
-          padding:
-            0 13px !important;
-
-          border-radius:
-            10px !important;
-
-          border:
-            1px solid #E0E4EB !important;
-
-          background:
-            #FFFFFF !important;
-
-          color:
-            #344054 !important;
-
-          font-size:
-            10px !important;
-
-          font-weight:
-            800 !important;
-
-          transition:
-            all .16s ease;
-        }
-
-        .action-btn:hover {
-
-          transform:
-            translateY(-1px);
-
-          border-color:
-            #B7A2E7 !important;
-
-          box-shadow:
-            0 5px 15px
-            rgba(124,58,237,0.10);
-        }
-
-        .download-btn {
-
-          background:
-            #201B37 !important;
-
-          color:
-            white !important;
-
-          border-color:
-            #201B37 !important;
-        }
-
-        .download-btn:hover {
-
-          background:
-            #322B51 !important;
-
-          color: white !important;
-        }
-
-
-        /* ===================================================
-           KPI CARDS
-        =================================================== */
 
         .kpi-grid {
-
-          display: grid;
-
-          grid-template-columns:
-            repeat(6, minmax(0, 1fr));
-
-          gap: 12px;
-
-          margin-bottom: 19px;
-        }
-
-        .kpi-card {
-
-          position: relative;
-
-          min-height: 115px;
-
-          padding:
-            16px 16px 14px 17px;
-
-          overflow: hidden;
-
-          background: #FFFFFF;
-
-          border:
-            1px solid #E7E9EF;
-
-          border-radius: 16px;
-
-          box-shadow:
-            0 5px 17px
-            rgba(30,41,59,0.04);
-
-          transition:
-            transform .18s ease,
-            box-shadow .18s ease;
-        }
-
-        .kpi-card:hover {
-
-          transform:
-            translateY(-2px);
-
-          box-shadow:
-            0 11px 25px
-            rgba(30,41,59,0.075);
-        }
-
-        .kpi-card::before {
-
-          content: '';
-
-          position: absolute;
-
-          top: 0;
-
-          left: 0;
-
-          width: 4px;
-
-          height: 100%;
-
-          background: #7C3AED;
-        }
-
-        .kpi-card.orange::before {
-          background: #F97316;
-        }
-
-        .kpi-card.pink::before {
-          background: #EC4899;
-        }
-
-        .kpi-card.blue::before {
-          background: #0EA5E9;
-        }
-
-        .kpi-card.green::before {
-          background: #10B981;
-        }
-
-        .kpi-card.amber::before {
-          background: #F59E0B;
-        }
-
-        .kpi-label {
-
-          color: #7A8699;
-
-          font-size: 9px;
-
-          font-weight: 800;
-
-          letter-spacing: .08em;
-
-          text-transform: uppercase;
-        }
-
-        .kpi-value {
-
-          margin-top: 8px;
-
-          color: #1D2738;
-
-          font-family:
-            'Plus Jakarta Sans',
-            'Inter',
-            sans-serif;
-
-          font-size: 24px;
-
-          line-height: 1;
-
-          font-weight: 800;
-
-          letter-spacing: -0.04em;
-        }
-
-        .kpi-note {
-
-          margin-top: 9px;
-
-          color: #98A2B3;
-
-          font-size: 9px;
-
-          line-height: 1.35;
-        }
-
-
-        /* ===================================================
-           SECTION HEADERS
-        =================================================== */
-
-        .section-heading {
-
-          display: flex;
-
-          align-items: center;
-
-          justify-content: space-between;
-
-          margin:
-            25px 2px 10px 2px;
-        }
-
-        .section-heading h3 {
-
-          margin: 0;
-
-          color: #202A3B;
-
-          font-family:
-            'Plus Jakarta Sans',
-            'Inter',
-            sans-serif;
-
-          font-size: 14px;
-
-          font-weight: 800;
-
-          letter-spacing: -0.025em;
-        }
-
-        .section-heading span {
-
-          color: #98A2B3;
-
-          font-size: 9px;
-        }
-
-
-        /* ===================================================
-           CHART CARDS
-        =================================================== */
-
-        .chart-grid {
-
-          display: grid;
-
-          grid-template-columns:
-            minmax(0, 1.55fr)
-            minmax(300px, .85fr);
-
-          gap: 14px;
-
-          margin-bottom: 14px;
-        }
-
-        .chart-grid-equal {
-
-          display: grid;
-
           grid-template-columns:
             repeat(2, minmax(0, 1fr));
-
-          gap: 14px;
-
-          margin-bottom: 14px;
         }
+      }
 
-        .chart-card {
-
-          min-width: 0;
-
-          background: #FFFFFF;
-
-          border:
-            1px solid #E7E9EF;
-
-          border-radius: 17px;
-
-          padding:
-            14px 15px 9px 15px;
-
-          box-shadow:
-            0 5px 18px
-            rgba(30,41,59,0.04);
-        }
-
-        .chart-card.full {
-
-          margin-bottom: 14px;
-        }
-
-        .chart-card-header {
-
-          display: flex;
-
-          align-items: center;
-
-          justify-content: space-between;
-
-          gap: 15px;
-
-          margin-bottom: 4px;
-        }
-
-        .chart-card-title {
-
-          color: #273246;
-
-          font-size: 11px;
-
-          font-weight: 800;
-        }
-
-        .chart-card-subtitle {
-
-          margin-top: 3px;
-
-          color: #98A2B3;
-
-          font-size: 9px;
-        }
-
-        .chart-control {
-
-          width: 170px;
-        }
-
-        .chart-control .selectize-input {
-
-          min-height:
-            32px !important;
-
-          padding:
-            7px 10px !important;
-
-          font-size:
-            10px !important;
-        }
-
-
-        /* ===================================================
-           INSIGHTS
-        =================================================== */
-
-        .insight-panel {
-
-          margin-bottom: 15px;
-
-          padding:
-            18px 19px;
-
-          background:
-            linear-gradient(
-              135deg,
-              #201B37,
-              #2D2450
-            );
-
-          color: white;
-
-          border-radius: 17px;
-
-          box-shadow:
-            0 8px 22px
-            rgba(30,27,53,0.12);
-        }
-
-        .insight-title {
-
-          display: flex;
-
-          align-items: center;
-
-          gap: 8px;
-
-          margin-bottom: 12px;
-
-          font-size: 11px;
-
-          font-weight: 800;
-        }
-
-        .insight-icon {
-
-          width: 27px;
-
-          height: 27px;
-
-          display: flex;
-
-          align-items: center;
-
-          justify-content: center;
-
-          border-radius: 8px;
-
-          background:
-            rgba(255,255,255,0.10);
-
-          font-size: 13px;
-        }
-
-        .insight-grid {
-
-          display: grid;
-
-          grid-template-columns:
-            repeat(3, 1fr);
-
-          gap: 9px;
-        }
-
-        .insight-item {
-
-          padding:
-            12px 13px;
-
-          background:
-            rgba(255,255,255,0.055);
-
-          border:
-            1px solid
-            rgba(255,255,255,0.08);
-
-          border-radius: 11px;
-        }
-
-        .insight-item strong {
-
-          display: block;
-
-          margin-bottom: 5px;
-
-          color: #FFFFFF;
-
-          font-size: 10px;
-        }
-
-        .insight-item span {
-
-          display: block;
-
-          color:
-            rgba(255,255,255,0.61);
-
-          font-size: 9px;
-
-          line-height: 1.5;
-        }
-
-
-        /* ===================================================
-           TABLE
-        =================================================== */
-
-        .table-card {
-
-          margin-bottom: 20px;
-
-          padding: 15px;
-
-          background: #FFFFFF;
-
-          border:
-            1px solid #E7E9EF;
-
-          border-radius: 17px;
-
-          box-shadow:
-            0 5px 18px
-            rgba(30,41,59,0.04);
-        }
-
-        .dataTables_wrapper {
-
-          font-size: 10px;
-        }
-
-        .dataTables_wrapper
-        .dataTables_filter input {
-
-          padding:
-            6px 9px !important;
-
-          border:
-            1px solid #E0E4EB !important;
-
-          border-radius:
-            8px !important;
-
-          outline: none !important;
-        }
-
-        table.dataTable
-        thead th {
-
-          padding:
-            10px !important;
-
-          background:
-            #F8F9FC !important;
-
-          color:
-            #667085 !important;
-
-          border-bottom:
-            1px solid #E6E8ED !important;
-
-          font-size:
-            9px !important;
-
-          letter-spacing:
-            .05em;
-
-          text-transform:
-            uppercase;
-        }
-
-        table.dataTable
-        tbody td {
-
-          padding:
-            9px 10px !important;
-
-          color:
-            #344054;
-
-          font-size:
-            9px;
-
-          border-bottom:
-            1px solid #F0F1F4 !important;
-        }
-
-        table.dataTable
-        tbody tr:hover {
-
-          background:
-            #FAF8FF !important;
-        }
-
-
-        /* ===================================================
-           FOOTER
-        =================================================== */
-
-        .footer {
-
-          display: flex;
-
-          align-items: center;
-
-          justify-content: space-between;
-
-          margin:
-            7px -30px 0 -30px;
-
-          padding:
-            16px 30px;
-
-          background: #FFFFFF;
-
-          border-top:
-            1px solid #E5E7EB;
-
-          color: #98A2B3;
-
-          font-size: 9px;
-        }
-
-        .footer strong {
-
-          color: #667085;
-        }
-
-
-        /* ===================================================
-           RESPONSIVE
-        =================================================== */
-
-        @media (max-width: 1250px) {
-
-          .kpi-grid {
-
-            grid-template-columns:
-              repeat(3, 1fr);
-          }
-
-          .filter-row {
-
-            grid-template-columns:
-              repeat(3, 1fr);
-          }
-
-          .chart-grid {
-
-            grid-template-columns:
-              1fr;
-          }
-        }
-
-
-        @media (max-width: 850px) {
-
-          .container-fluid {
-
-            padding-left:
-              16px !important;
-
-            padding-right:
-              16px !important;
-          }
-
-          .hero {
-
-            margin-left:
-              -16px;
-
-            margin-right:
-              -16px;
-
-            padding:
-              25px 20px;
-          }
-
-          .hero-inner {
-
-            align-items:
-              flex-start;
-
-            flex-direction:
-              column;
-          }
-
-          .hero-title {
-
-            font-size:
-              23px;
-          }
-
-          .hero-meta {
-
-            display:
-              none;
-          }
-
-          .filter-row {
-
-            grid-template-columns:
-              1fr;
-          }
-
-          .kpi-grid {
-
-            grid-template-columns:
-              repeat(2, 1fr);
-          }
-
-          .chart-grid-equal {
-
-            grid-template-columns:
-              1fr;
-          }
-
-          .insight-grid {
-
-            grid-template-columns:
-              1fr;
-          }
-
-          .footer {
-
-            margin-left:
-              -16px;
-
-            margin-right:
-              -16px;
-
-            padding-left:
-              16px;
-
-            padding-right:
-              16px;
-
-            flex-direction:
-              column;
-
-            gap:
-              5px;
-          }
-        }
-
-
-        @media (max-width: 480px) {
-
-          .kpi-grid {
-
-            grid-template-columns:
-              1fr;
-          }
-
-          .hero-title {
-
-            font-size:
-              21px;
-          }
-        }
-        "
-      )
-    )
+    "))
+    
   ),
   
   
   # ==========================================================
-  # HERO
+  # MAIN CONTAINER
   # ==========================================================
   
   div(
-    class = "hero",
+    
+    class = "container-fluid",
+    
+    # ========================================================
+    # HERO
+    # ========================================================
     
     div(
-      class = "hero-inner",
+      class = "hero",
       
       div(
-        class = "brand-area",
+        class = "hero-inner",
         
-        if (
-          file.exists(
-            "www/instagram-logo.png"
-          )
-        ) {
-          
-          tags$img(
-            src = "instagram-logo.png",
-            class = "brand-logo",
-            alt = "Instagram"
-          )
-          
-        } else {
-          
-          div(
-            class = "ig-fallback",
-            "◎"
-          )
-        },
+        uiOutput("hero_logo"),
         
         div(
-          
-          div(
-            class = "eyebrow",
-            "BIG DATA ANALYTICS PROJECT"
-          ),
-          
           h1(
             class = "hero-title",
             "Instagram Analytics"
@@ -1775,721 +792,592 @@ ui <- page_fluid(
           
           p(
             class = "hero-subtitle",
-            "Content performance, audience engagement and publishing intelligence — all in one interactive dashboard."
+            "A Big Data Approach to Content Performance and Audience Engagement"
           )
-        )
-      ),
-      
-      div(
-        class = "hero-meta",
-        
-        div(
-          class = "status-pill",
-          
-          span(
-            class = "status-dot"
-          ),
-          
-          "Live dataset"
         ),
         
         div(
-          class = "status-pill",
-          
-          paste0(
-            comma(
-              nrow(instagram)
-            ),
-            " posts analysed"
-          )
+          class = "hero-badge",
+          "R • SHINY • BIG DATA"
         )
       )
-    )
-  ),
-  
-  
-  # ==========================================================
-  # FILTER PANEL
-  # ==========================================================
-  
-  div(
-    class = "filter-panel",
+    ),
+    
+    
+    # ========================================================
+    # FILTERS
+    # ========================================================
     
     div(
-      class = "filter-header",
+      class = "filter-panel",
       
       div(
         class = "filter-title",
-        "Explore the dataset"
+        "Analytics Filters"
       ),
       
-      div(
-        class = "filter-caption",
+      fluidRow(
         
-        textOutput(
-          "filter_status",
-          inline = TRUE
-        )
-      )
-    ),
-    
-    div(
-      class = "filter-row",
-      
-      div(
-        class = "filter-item",
-        
-        selectInput(
-          "account_type",
-          "Account type",
+        column(
+          width = 2,
           
-          choices = c(
-            "All account types" = "ALL",
-            safe_unique(
-              instagram$account_type
-            )
-          ),
-          
-          selected = "ALL"
-        )
-      ),
-      
-      div(
-        class = "filter-item",
-        
-        selectInput(
-          "media_type",
-          "Media type",
-          
-          choices = c(
-            "All media types" = "ALL",
-            safe_unique(
-              instagram$media_type
-            )
-          ),
-          
-          selected = "ALL"
-        )
-      ),
-      
-      div(
-        class = "filter-item",
-        
-        selectInput(
-          "content_category",
-          "Content category",
-          
-          choices = c(
-            "All categories" = "ALL",
-            safe_unique(
-              instagram$content_category
-            )
-          ),
-          
-          selected = "ALL"
-        )
-      ),
-      
-      div(
-        class = "filter-item",
-        
-        selectInput(
-          "traffic_source",
-          "Traffic source",
-          
-          choices = c(
-            "All sources" = "ALL",
-            safe_unique(
-              instagram$traffic_source
-            )
-          ),
-          
-          selected = "ALL"
-        )
-      ),
-      
-      div(
-        class = "filter-item",
-        
-        selectInput(
-          "performance",
-          "Performance",
-          
-          choices = c(
-            "All performance" = "ALL",
-            safe_unique(
-              instagram$performance_bucket_label
-            )
-          ),
-          
-          selected = "ALL"
-        )
-      ),
-      
-      div(
-        class = "filter-item",
-        
-        dateRangeInput(
-          "date_range",
-          
-          "Date range",
-          
-          start = min(
-            instagram$post_date,
-            na.rm = TRUE
-          ),
-          
-          end = max(
-            instagram$post_date,
-            na.rm = TRUE
-          ),
-          
-          min = min(
-            instagram$post_date,
-            na.rm = TRUE
-          ),
-          
-          max = max(
-            instagram$post_date,
-            na.rm = TRUE
-          ),
-          
-          format = "dd M yyyy",
-          
-          separator = " → "
-        )
-      ),
-      
-      div(
-        
-        style =
-          "display:flex; gap:6px;",
-        
-        actionButton(
-          "reset_filters",
-          "Reset",
-          class = "action-btn"
+          dateRangeInput(
+            "date_filter",
+            "Date Range",
+            start = min(instagram_data$post_date, na.rm = TRUE),
+            end = max(instagram_data$post_date, na.rm = TRUE),
+            min = min(instagram_data$post_date, na.rm = TRUE),
+            max = max(instagram_data$post_date, na.rm = TRUE),
+            format = "dd M yyyy",
+            separator = " → ",
+            width = "100%"
+          )
         ),
         
-        downloadButton(
-          "download_data",
-          "Export",
-          class = "action-btn download-btn"
-        )
-      )
-    )
-  ),
-  
-  
-  # ==========================================================
-  # KPI CARDS
-  # ==========================================================
-  
-  div(
-    class = "kpi-grid",
-    
-    div(
-      class = "kpi-card",
-      
-      div(
-        class = "kpi-label",
-        "Posts"
-      ),
-      
-      div(
-        class = "kpi-value",
-        
-        textOutput(
-          "kpi_posts",
-          inline = TRUE
-        )
-      ),
-      
-      div(
-        class = "kpi-note",
-        "Filtered publications"
-      )
-    ),
-    
-    div(
-      class = "kpi-card orange",
-      
-      div(
-        class = "kpi-label",
-        "Reach"
-      ),
-      
-      div(
-        class = "kpi-value",
-        
-        textOutput(
-          "kpi_reach",
-          inline = TRUE
-        )
-      ),
-      
-      div(
-        class = "kpi-note",
-        "Total accounts reached"
-      )
-    ),
-    
-    div(
-      class = "kpi-card pink",
-      
-      div(
-        class = "kpi-label",
-        "Impressions"
-      ),
-      
-      div(
-        class = "kpi-value",
-        
-        textOutput(
-          "kpi_impressions",
-          inline = TRUE
-        )
-      ),
-      
-      div(
-        class = "kpi-note",
-        "Total content views"
-      )
-    ),
-    
-    div(
-      class = "kpi-card blue",
-      
-      div(
-        class = "kpi-label",
-        "Engagement"
-      ),
-      
-      div(
-        class = "kpi-value",
-        
-        textOutput(
-          "kpi_engagement",
-          inline = TRUE
-        )
-      ),
-      
-      div(
-        class = "kpi-note",
-        "Likes + comments + shares + saves"
-      )
-    ),
-    
-    div(
-      class = "kpi-card green",
-      
-      div(
-        class = "kpi-label",
-        "Engagement rate"
-      ),
-      
-      div(
-        class = "kpi-value",
-        
-        textOutput(
-          "kpi_rate",
-          inline = TRUE
-        )
-      ),
-      
-      div(
-        class = "kpi-note",
-        "Average across filtered posts"
-      )
-    ),
-    
-    div(
-      class = "kpi-card amber",
-      
-      div(
-        class = "kpi-label",
-        "Followers gained"
-      ),
-      
-      div(
-        class = "kpi-value",
-        
-        textOutput(
-          "kpi_followers",
-          inline = TRUE
-        )
-      ),
-      
-      div(
-        class = "kpi-note",
-        "Attributed follower growth"
-      )
-    )
-  ),
-  
-  
-  # ==========================================================
-  # TREND
-  # ==========================================================
-  
-  div(
-    class = "section-heading",
-    
-    h3(
-      "Performance over time"
-    ),
-    
-    span(
-      "Daily aggregation"
-    )
-  ),
-  
-  div(
-    class = "chart-card full",
-    
-    div(
-      class = "chart-card-header",
-      
-      div(
-        
-        div(
-          class = "chart-card-title",
-          "Publishing performance trend"
+        column(
+          width = 2,
+          
+          selectInput(
+            "account_type_filter",
+            "Account Type",
+            choices = c(
+              "All",
+              sort(unique(instagram_data$account_type))
+            ),
+            selected = "All"
+          )
         ),
         
-        div(
-          class = "chart-card-subtitle",
-          "Change the metric to explore different performance dimensions."
-        )
-      ),
-      
-      div(
-        class = "chart-control",
+        column(
+          width = 2,
+          
+          selectInput(
+            "media_type_filter",
+            "Media Type",
+            choices = c(
+              "All",
+              sort(unique(instagram_data$media_type))
+            ),
+            selected = "All"
+          )
+        ),
         
-        selectInput(
-          "trend_metric",
-          NULL,
+        column(
+          width = 2,
           
-          choices = c(
-            "Engagement rate" =
-              "engagement_rate",
-            
-            "Total engagement" =
-              "total_engagement",
-            
-            "Reach" =
-              "reach",
-            
-            "Impressions" =
-              "impressions",
-            
-            "Followers gained" =
-              "followers_gained"
-          ),
-          
-          selected =
-            "engagement_rate"
-        )
-      )
-    ),
-    
-    plotlyOutput(
-      "trend_plot",
-      height = "300px"
-    )
-  ),
-  
-  
-  # ==========================================================
-  # CONTENT PERFORMANCE
-  # ==========================================================
-  
-  div(
-    class = "section-heading",
-    
-    h3(
-      "Content performance"
-    ),
-    
-    span(
-      "Compare formats and performance tiers"
-    )
-  ),
-  
-  div(
-    class = "chart-grid",
-    
-    div(
-      class = "chart-card",
-      
-      div(
-        class = "chart-card-header",
+          selectInput(
+            "category_filter",
+            "Content Category",
+            choices = c(
+              "All",
+              sort(unique(instagram_data$content_category))
+            ),
+            selected = "All"
+          )
+        ),
         
-        div(
+        column(
+          width = 2,
           
-          div(
-            class = "chart-card-title",
-            "Performance distribution"
-          ),
+          selectInput(
+            "traffic_filter",
+            "Traffic Source",
+            choices = c(
+              "All",
+              sort(unique(instagram_data$traffic_source))
+            ),
+            selected = "All"
+          )
+        ),
+        
+        column(
+          width = 2,
           
-          div(
-            class = "chart-card-subtitle",
-            "Share of filtered posts"
+          selectInput(
+            "performance_filter",
+            "Performance Bucket",
+            choices = c(
+              "All",
+              sort(unique(instagram_data$performance_bucket_label))
+            ),
+            selected = "All"
           )
         )
       ),
       
-      plotlyOutput(
-        "performance_plot",
-        height = "290px"
+      fluidRow(
+        
+        column(
+          width = 2,
+          
+          selectInput(
+            "trend_metric",
+            "Trend Metric",
+            choices = c(
+              "Total Engagement" = "total_engagement",
+              "Likes" = "likes",
+              "Comments" = "comments",
+              "Shares" = "shares",
+              "Saves" = "saves",
+              "Reach" = "reach",
+              "Impressions" = "impressions",
+              "Followers Gained" = "followers_gained"
+            ),
+            selected = "total_engagement"
+          )
+        ),
+        
+        column(
+          width = 2,
+          
+          actionButton(
+            "reset_filters",
+            "Reset Filters",
+            icon = icon("rotate-left"),
+            class = "btn btn-outline-secondary reset-btn"
+          )
+        ),
+        
+        column(
+          width = 2,
+          
+          downloadButton(
+            "download_data",
+            "Download Filtered Data",
+            class = "btn btn-dark download-btn"
+          )
+        ),
+        
+        column(
+          width = 6,
+          
+          div(
+            style = "
+              text-align:right;
+              padding-top:30px;
+              color:#8b8591;
+              font-size:11px;
+            ",
+            
+            strong(textOutput("record_count", inline = TRUE)),
+            " records currently included in the analysis"
+          )
+        )
       )
     ),
     
+    
+    # ========================================================
+    # KPI CARDS
+    # ========================================================
+    
     div(
-      class = "chart-card",
+      class = "kpi-grid",
       
       div(
-        class = "chart-card-header",
+        class = "kpi-card",
+        div(class = "kpi-label", "Posts"),
+        div(class = "kpi-value", textOutput("kpi_posts")),
+        div(class = "kpi-description", "Filtered records")
+      ),
+      
+      div(
+        class = "kpi-card",
+        div(class = "kpi-label", "Reach"),
+        div(class = "kpi-value", textOutput("kpi_reach")),
+        div(class = "kpi-description", "Total audience reached")
+      ),
+      
+      div(
+        class = "kpi-card",
+        div(class = "kpi-label", "Impressions"),
+        div(class = "kpi-value", textOutput("kpi_impressions")),
+        div(class = "kpi-description", "Total content views")
+      ),
+      
+      div(
+        class = "kpi-card",
+        div(class = "kpi-label", "Engagement"),
+        div(class = "kpi-value", textOutput("kpi_engagement")),
+        div(class = "kpi-description", "Likes + comments + shares + saves")
+      ),
+      
+      div(
+        class = "kpi-card",
+        div(class = "kpi-label", "Engagement Rate"),
+        div(class = "kpi-value", textOutput("kpi_engagement_rate")),
+        div(class = "kpi-description", "Average engagement rate")
+      ),
+      
+      div(
+        class = "kpi-card",
+        div(class = "kpi-label", "Followers Gained"),
+        div(class = "kpi-value", textOutput("kpi_followers")),
+        div(class = "kpi-description", "Total followers gained")
+      )
+    ),
+    
+    
+    # ========================================================
+    # ROW 1
+    # ========================================================
+    
+    fluidRow(
+      
+      column(
+        width = 8,
         
         div(
+          class = "section-card",
           
           div(
-            class = "chart-card-title",
-            "Media type performance"
+            class = "section-title",
+            "Engagement Trend"
           ),
           
           div(
-            class = "chart-card-subtitle",
-            "Average engagement rate"
+            class = "section-subtitle",
+            "Daily performance based on the selected metric"
+          ),
+          
+          plotlyOutput(
+            "trend_plot",
+            height = "350px"
           )
         )
       ),
       
-      plotlyOutput(
-        "media_plot",
-        height = "290px"
-      )
-    )
-  ),
-  
-  
-  # ==========================================================
-  # AUDIENCE INTELLIGENCE
-  # ==========================================================
-  
-  div(
-    class = "section-heading",
-    
-    h3(
-      "Audience & content intelligence"
-    ),
-    
-    span(
-      "Where performance is coming from"
-    )
-  ),
-  
-  div(
-    class = "chart-grid-equal",
-    
-    div(
-      class = "chart-card",
-      
-      div(
-        class = "chart-card-header",
+      column(
+        width = 4,
         
         div(
+          class = "section-card",
           
           div(
-            class = "chart-card-title",
-            "Traffic source"
+            class = "section-title",
+            "Performance Mix"
           ),
           
           div(
-            class = "chart-card-subtitle",
-            "Average engagement rate by source"
+            class = "section-subtitle",
+            "Distribution of posts by performance bucket"
+          ),
+          
+          plotlyOutput(
+            "performance_plot",
+            height = "350px"
+          )
+        )
+      )
+    ),
+    
+    
+    # ========================================================
+    # ROW 2
+    # ========================================================
+    
+    fluidRow(
+      
+      column(
+        width = 6,
+        
+        div(
+          class = "section-card",
+          
+          div(
+            class = "section-title",
+            "Media Type Performance"
+          ),
+          
+          div(
+            class = "section-subtitle",
+            "Average engagement rate by media format"
+          ),
+          
+          plotlyOutput(
+            "media_plot",
+            height = "330px"
           )
         )
       ),
       
-      plotlyOutput(
-        "traffic_plot",
-        height = "325px"
-      )
-    ),
-    
-    div(
-      class = "chart-card",
-      
-      div(
-        class = "chart-card-header",
+      column(
+        width = 6,
         
         div(
+          class = "section-card",
           
           div(
-            class = "chart-card-title",
-            "Top content categories"
+            class = "section-title",
+            "Traffic Source Performance"
           ),
           
           div(
-            class = "chart-card-subtitle",
-            "Top 10 categories by engagement rate"
+            class = "section-subtitle",
+            "Engagement generated from different traffic sources"
+          ),
+          
+          plotlyOutput(
+            "traffic_plot",
+            height = "330px"
+          )
+        )
+      )
+    ),
+    
+    
+    # ========================================================
+    # ROW 3
+    # ========================================================
+    
+    fluidRow(
+      
+      column(
+        width = 6,
+        
+        div(
+          class = "section-card",
+          
+          div(
+            class = "section-title",
+            "Content Category Ranking"
+          ),
+          
+          div(
+            class = "section-subtitle",
+            "Top content categories by average engagement"
+          ),
+          
+          plotlyOutput(
+            "category_plot",
+            height = "390px"
           )
         )
       ),
       
-      plotlyOutput(
-        "category_plot",
-        height = "325px"
+      column(
+        width = 6,
+        
+        div(
+          class = "section-card",
+          
+          div(
+            class = "section-title",
+            "Posting Time Heatmap"
+          ),
+          
+          div(
+            class = "section-subtitle",
+            "Average engagement rate by day and posting hour"
+          ),
+          
+          plotlyOutput(
+            "heatmap_plot",
+            height = "390px"
+          )
+        )
       )
-    )
-  ),
-  
-  
-  # ==========================================================
-  # HEATMAP
-  # ==========================================================
-  
-  div(
-    class = "section-heading",
-    
-    h3(
-      "Best publishing windows"
     ),
     
-    span(
-      "Day × hour engagement analysis"
-    )
-  ),
-  
-  div(
-    class = "chart-card full",
     
-    plotlyOutput(
-      "heatmap_plot",
-      height = "370px"
-    )
-  ),
-  
-  
-  # ==========================================================
-  # ENGAGEMENT COMPOSITION
-  # ==========================================================
-  
-  div(
-    class = "section-heading",
+    # ========================================================
+    # ROW 4
+    # ========================================================
     
-    h3(
-      "Engagement composition"
+    fluidRow(
+      
+      column(
+        width = 5,
+        
+        div(
+          class = "section-card",
+          
+          div(
+            class = "section-title",
+            "Engagement Composition"
+          ),
+          
+          div(
+            class = "section-subtitle",
+            "Contribution of individual engagement actions"
+          ),
+          
+          plotlyOutput(
+            "composition_plot",
+            height = "330px"
+          )
+        )
+      ),
+      
+      column(
+        width = 7,
+        
+        div(
+          class = "section-card",
+          
+          div(
+            class = "section-title",
+            "Reach vs Engagement"
+          ),
+          
+          div(
+            class = "section-subtitle",
+            "Relationship between audience reach and engagement"
+          ),
+          
+          plotlyOutput(
+            "scatter_plot",
+            height = "330px"
+          )
+        )
+      )
     ),
     
-    span(
-      "How audiences interact with content"
-    )
-  ),
-  
-  div(
-    class = "chart-card full",
     
-    plotlyOutput(
-      "engagement_plot",
-      height = "300px"
-    )
-  ),
-  
-  
-  # ==========================================================
-  # INSIGHTS
-  # ==========================================================
-  
-  div(
-    class = "section-heading",
+    # ========================================================
+    # ROW 5
+    # ========================================================
     
-    h3(
-      "Key insights"
+    fluidRow(
+      
+      column(
+        width = 6,
+        
+        div(
+          class = "section-card",
+          
+          div(
+            class = "section-title",
+            "Call-to-Action Impact"
+          ),
+          
+          div(
+            class = "section-subtitle",
+            "Average engagement rate with and without CTA"
+          ),
+          
+          plotlyOutput(
+            "cta_plot",
+            height = "300px"
+          )
+        )
+      ),
+      
+      column(
+        width = 6,
+        
+        div(
+          class = "section-card",
+          
+          div(
+            class = "section-title",
+            "Account Performance"
+          ),
+          
+          div(
+            class = "section-subtitle",
+            "Average engagement rate across accounts"
+          ),
+          
+          plotlyOutput(
+            "account_plot",
+            height = "300px"
+          )
+        )
+      )
     ),
     
-    span(
-      "Automatically generated from current filters"
-    )
-  ),
-  
-  div(
-    class = "insight-panel",
+    
+    # ========================================================
+    # INSIGHTS
+    # ========================================================
     
     div(
-      class = "insight-title",
+      class = "section-card",
       
       div(
-        class = "insight-icon",
-        "✦"
+        class = "section-title",
+        "Automated Insights"
       ),
       
-      "What the filtered data is telling you"
-    ),
-    
-    uiOutput(
-      "insights"
-    )
-  ),
-  
-  
-  # ==========================================================
-  # TOP POSTS
-  # ==========================================================
-  
-  div(
-    class = "section-heading",
-    
-    h3(
-      "Top performing posts"
-    ),
-    
-    span(
-      "Sorted by engagement rate"
-    )
-  ),
-  
-  div(
-    class = "table-card",
-    
-    DTOutput(
-      "top_posts"
-    )
-  ),
-  
-  
-  # ==========================================================
-  # FOOTER
-  # ==========================================================
-  
-  div(
-    class = "footer",
-    
-    div(
-      strong(
-        "Instagram Analytics"
+      div(
+        class = "section-subtitle",
+        "Automatically generated observations from the filtered dataset"
       ),
       
-      " · Big Data Analytics Project"
+      uiOutput("insights")
     ),
     
+    
+    # ========================================================
+    # TOP POSTS
+    # ========================================================
+    
     div(
-      "R · Shiny · Plotly"
+      class = "section-card",
+      
+      div(
+        class = "section-title",
+        "Top 10 Performing Posts"
+      ),
+      
+      div(
+        class = "section-subtitle",
+        "Posts ranked by total engagement within the selected filters"
+      ),
+      
+      DTOutput("top_posts")
+    ),
+    
+    
+    # ========================================================
+    # FOOTER
+    # ========================================================
+    
+    div(
+      class = "footer",
+      
+      "Instagram Analytics • Big Data Analytics Project • ",
+      "Built using R, Shiny, Plotly and DT"
     )
   )
 )
 
 
 # ============================================================
-# 9. SERVER
+# 8. SERVER
 # ============================================================
 
-server <- function(
-    input,
-    output,
-    session
-) {
+server <- function(input, output, session) {
+  
+  
+  # ==========================================================
+  # HERO LOGO
+  # ==========================================================
+  
+  output$hero_logo <- renderUI({
+    
+    logo_path <- file.path(
+      "www",
+      "instagram-logo.png"
+    )
+    
+    if (file.exists(logo_path)) {
+      
+      tags$img(
+        src = "instagram-logo.png",
+        class = "hero-logo",
+        alt = "Instagram"
+      )
+      
+    } else {
+      
+      div(
+        class = "hero-logo-fallback",
+        icon("instagram")
+      )
+    }
+  })
   
   
   # ==========================================================
@@ -2498,115 +1386,85 @@ server <- function(
   
   filtered_data <- reactive({
     
-    d <- instagram
+    d <- instagram_data
     
-    # --------------------------------------------------------
+    # Date
+    if (
+      !is.null(input$date_filter) &&
+      length(input$date_filter) == 2 &&
+      all(!is.na(input$date_filter))
+    ) {
+      
+      d <- d %>%
+        filter(
+          post_date >= input$date_filter[1],
+          post_date <= input$date_filter[2]
+        )
+    }
+    
+    
     # Account type
-    # --------------------------------------------------------
-    
     if (
-      !is.null(input$account_type) &&
-      length(input$account_type) == 1 &&
-      input$account_type != "ALL"
+      !is.null(input$account_type_filter) &&
+      input$account_type_filter != "All"
     ) {
       
       d <- d %>%
         filter(
-          account_type ==
-            input$account_type
+          account_type == input$account_type_filter
         )
     }
     
     
-    # --------------------------------------------------------
     # Media type
-    # --------------------------------------------------------
-    
     if (
-      !is.null(input$media_type) &&
-      length(input$media_type) == 1 &&
-      input$media_type != "ALL"
+      !is.null(input$media_type_filter) &&
+      input$media_type_filter != "All"
     ) {
       
       d <- d %>%
         filter(
-          media_type ==
-            input$media_type
+          media_type == input$media_type_filter
         )
     }
     
     
-    # --------------------------------------------------------
     # Content category
-    # --------------------------------------------------------
-    
     if (
-      !is.null(input$content_category) &&
-      length(input$content_category) == 1 &&
-      input$content_category != "ALL"
+      !is.null(input$category_filter) &&
+      input$category_filter != "All"
     ) {
       
       d <- d %>%
         filter(
-          content_category ==
-            input$content_category
+          content_category == input$category_filter
         )
     }
     
     
-    # --------------------------------------------------------
     # Traffic source
-    # --------------------------------------------------------
-    
     if (
-      !is.null(input$traffic_source) &&
-      length(input$traffic_source) == 1 &&
-      input$traffic_source != "ALL"
+      !is.null(input$traffic_filter) &&
+      input$traffic_filter != "All"
     ) {
       
       d <- d %>%
         filter(
-          traffic_source ==
-            input$traffic_source
+          traffic_source == input$traffic_filter
         )
     }
     
     
-    # --------------------------------------------------------
-    # Performance
-    # --------------------------------------------------------
-    
+    # Performance bucket
     if (
-      !is.null(input$performance) &&
-      length(input$performance) == 1 &&
-      input$performance != "ALL"
+      !is.null(input$performance_filter) &&
+      input$performance_filter != "All"
     ) {
       
       d <- d %>%
         filter(
           performance_bucket_label ==
-            input$performance
-        )
-    }
-    
-    
-    # --------------------------------------------------------
-    # Date
-    # --------------------------------------------------------
-    
-    if (
-      !is.null(input$date_range) &&
-      length(input$date_range) == 2 &&
-      all(!is.na(input$date_range))
-    ) {
-      
-      d <- d %>%
-        filter(
-          post_date >=
-            input$date_range[1],
-          
-          post_date <=
-            input$date_range[2]
+            input$performance_filter
         )
     }
     
@@ -2616,101 +1474,94 @@ server <- function(
   
   
   # ==========================================================
-  # RESET
+  # RESET FILTERS
   # ==========================================================
   
   observeEvent(
     input$reset_filters,
     {
       
-      updateSelectInput(
-        session,
-        "account_type",
-        selected = "ALL"
-      )
-      
-      updateSelectInput(
-        session,
-        "media_type",
-        selected = "ALL"
-      )
-      
-      updateSelectInput(
-        session,
-        "content_category",
-        selected = "ALL"
-      )
-      
-      updateSelectInput(
-        session,
-        "traffic_source",
-        selected = "ALL"
-      )
-      
-      updateSelectInput(
-        session,
-        "performance",
-        selected = "ALL"
-      )
-      
       updateDateRangeInput(
         session,
-        "date_range",
-        
+        "date_filter",
         start = min(
-          instagram$post_date,
+          instagram_data$post_date,
           na.rm = TRUE
         ),
-        
         end = max(
-          instagram$post_date,
+          instagram_data$post_date,
           na.rm = TRUE
         )
       )
       
       updateSelectInput(
         session,
+        "account_type_filter",
+        selected = "All"
+      )
+      
+      updateSelectInput(
+        session,
+        "media_type_filter",
+        selected = "All"
+      )
+      
+      updateSelectInput(
+        session,
+        "category_filter",
+        selected = "All"
+      )
+      
+      updateSelectInput(
+        session,
+        "traffic_filter",
+        selected = "All"
+      )
+      
+      updateSelectInput(
+        session,
+        "performance_filter",
+        selected = "All"
+      )
+      
+      updateSelectInput(
+        session,
         "trend_metric",
-        selected =
-          "engagement_rate"
+        selected = "total_engagement"
       )
     }
   )
   
   
   # ==========================================================
-  # FILTER STATUS
+  # RECORD COUNT
   # ==========================================================
   
-  output$filter_status <- renderText({
-    
-    d <- filtered_data()
+  output$record_count <- renderText({
     
     paste0(
-      comma(
-        nrow(d)
-      ),
-      " posts currently selected"
-    )
-  })
-  
-  
-  # ==========================================================
-  # KPI: POSTS
-  # ==========================================================
-  
-  output$kpi_posts <- renderText({
-    
-    fmt_compact(
-      nrow(
-        filtered_data()
+      format(
+        nrow(filtered_data()),
+        big.mark = ","
       )
     )
   })
   
   
   # ==========================================================
-  # KPI: REACH
+  # KPI 1 - POSTS
+  # ==========================================================
+  
+  output$kpi_posts <- renderText({
+    
+    fmt_compact(
+      nrow(filtered_data())
+    )
+  })
+  
+  
+  # ==========================================================
+  # KPI 2 - REACH
   # ==========================================================
   
   output$kpi_reach <- renderText({
@@ -2718,16 +1569,13 @@ server <- function(
     d <- filtered_data()
     
     fmt_compact(
-      sum(
-        d$reach,
-        na.rm = TRUE
-      )
+      safe_sum(d$reach)
     )
   })
   
   
   # ==========================================================
-  # KPI: IMPRESSIONS
+  # KPI 3 - IMPRESSIONS
   # ==========================================================
   
   output$kpi_impressions <- renderText({
@@ -2735,16 +1583,13 @@ server <- function(
     d <- filtered_data()
     
     fmt_compact(
-      sum(
-        d$impressions,
-        na.rm = TRUE
-      )
+      safe_sum(d$impressions)
     )
   })
   
   
   # ==========================================================
-  # KPI: ENGAGEMENT
+  # KPI 4 - ENGAGEMENT
   # ==========================================================
   
   output$kpi_engagement <- renderText({
@@ -2752,33 +1597,27 @@ server <- function(
     d <- filtered_data()
     
     fmt_compact(
-      sum(
-        d$total_engagement,
-        na.rm = TRUE
-      )
+      safe_sum(d$total_engagement)
     )
   })
   
   
   # ==========================================================
-  # KPI: ENGAGEMENT RATE
+  # KPI 5 - ENGAGEMENT RATE
   # ==========================================================
   
-  output$kpi_rate <- renderText({
+  output$kpi_engagement_rate <- renderText({
     
     d <- filtered_data()
     
-    fmt_percent(
-      safe_mean(
-        d$engagement_rate
-      ),
-      2
+    fmt_pct(
+      safe_mean(d$engagement_rate)
     )
   })
   
   
   # ==========================================================
-  # KPI: FOLLOWERS
+  # KPI 6 - FOLLOWERS
   # ==========================================================
   
   output$kpi_followers <- renderText({
@@ -2786,33 +1625,51 @@ server <- function(
     d <- filtered_data()
     
     fmt_compact(
-      sum(
-        d$followers_gained,
-        na.rm = TRUE
-      )
+      safe_sum(d$followers_gained)
     )
   })
   
   
   # ==========================================================
-  # COMMON PLOTLY CONFIG
+  # EMPTY PLOT HELPER
   # ==========================================================
   
-  plot_config <- list(
+  empty_plot <- function(message = "No data available") {
     
-    responsive = TRUE,
-    
-    displaylogo = FALSE,
-    
-    modeBarButtonsToRemove = c(
-      "lasso2d",
-      "select2d"
-    )
-  )
+    plot_ly() %>%
+      layout(
+        xaxis = list(
+          visible = FALSE
+        ),
+        yaxis = list(
+          visible = FALSE
+        ),
+        annotations = list(
+          list(
+            text = message,
+            x = 0.5,
+            y = 0.5,
+            xref = "paper",
+            yref = "paper",
+            showarrow = FALSE,
+            font = list(
+              size = 14,
+              color = "#888888"
+            )
+          )
+        ),
+        margin = list(
+          l = 10,
+          r = 10,
+          t = 10,
+          b = 10
+        )
+      )
+  }
   
   
   # ==========================================================
-  # TREND CHART
+  # 1. ENGAGEMENT TREND
   # ==========================================================
   
   output$trend_plot <- renderPlotly({
@@ -2820,10 +1677,9 @@ server <- function(
     d <- filtered_data()
     
     if (nrow(d) == 0) {
-      
       return(
         empty_plot(
-          "No posts match the selected filters."
+          "No data available for the selected filters"
         )
       )
     }
@@ -2832,258 +1688,80 @@ server <- function(
     
     if (
       is.null(metric) ||
-      length(metric) != 1 ||
-      !metric %in% c(
-        "engagement_rate",
-        "total_engagement",
-        "reach",
-        "impressions",
-        "followers_gained"
-      )
+      !metric %in% names(d)
     ) {
-      
-      metric <-
-        "engagement_rate"
+      metric <- "total_engagement"
     }
     
-    
-    trend <- d %>%
-      
-      group_by(
-        post_date
-      ) %>%
-      
+    trend_data <- d %>%
+      group_by(post_date) %>%
       summarise(
-        
-        engagement_rate =
-          safe_mean(
-            engagement_rate
-          ),
-        
-        total_engagement =
-          sum(
-            total_engagement,
-            na.rm = TRUE
-          ),
-        
-        reach =
-          sum(
-            reach,
-            na.rm = TRUE
-          ),
-        
-        impressions =
-          sum(
-            impressions,
-            na.rm = TRUE
-          ),
-        
-        followers_gained =
-          sum(
-            followers_gained,
-            na.rm = TRUE
-          ),
-        
+        value = sum(
+          .data[[metric]],
+          na.rm = TRUE
+        ),
         .groups = "drop"
       ) %>%
-      
-      arrange(
-        post_date
-      )
+      arrange(post_date)
     
-    
-    if (nrow(trend) == 0) {
+    metric_label <- switch(
+      metric,
       
-      return(
-        empty_plot(
-          "No trend data available."
-        )
-      )
-    }
-    
-    
-    y_values <-
-      trend[[metric]]
-    
-    
-    metric_labels <- c(
+      total_engagement = "Total Engagement",
+      likes = "Likes",
+      comments = "Comments",
+      shares = "Shares",
+      saves = "Saves",
+      reach = "Reach",
+      impressions = "Impressions",
+      followers_gained = "Followers Gained",
       
-      engagement_rate =
-        "Engagement rate",
-      
-      total_engagement =
-        "Total engagement",
-      
-      reach =
-        "Reach",
-      
-      impressions =
-        "Impressions",
-      
-      followers_gained =
-        "Followers gained"
+      "Metric"
     )
     
-    
-    if (
-      metric ==
-      "engagement_rate"
-    ) {
-      
-      hover_text <- paste0(
-        
-        "<b>",
-        format(
-          trend$post_date,
-          "%d %b %Y"
-        ),
-        "</b>",
-        
-        "<br>Engagement rate: ",
-        
-        fmt_percent_vec(
-          y_values,
-          2
-        ),
-        
-        "<extra></extra>"
-      )
-      
-      y_axis <- list(
-        
-        title = NULL,
-        
-        tickformat = ".1%",
-        
-        gridcolor =
-          "#EEF0F4",
-        
-        zeroline = FALSE
-      )
-      
-    } else {
-      
-      hover_text <- paste0(
-        
-        "<b>",
-        format(
-          trend$post_date,
-          "%d %b %Y"
-        ),
-        "</b>",
-        
-        "<br>",
-        metric_labels[[metric]],
-        ": ",
-        
-        comma(
-          round(
-            y_values
-          )
-        ),
-        
-        "<extra></extra>"
-      )
-      
-      y_axis <- list(
-        
-        title = NULL,
-        
-        separatethousands =
-          TRUE,
-        
-        gridcolor =
-          "#EEF0F4",
-        
-        zeroline = FALSE
-      )
-    }
-    
-    
     plot_ly(
-      
-      x = trend$post_date,
-      
-      y = y_values,
-      
+      trend_data,
+      x = ~post_date,
+      y = ~value,
       type = "scatter",
-      
-      mode =
-        "lines+markers",
-      
-      text =
-        hover_text,
-      
-      hovertemplate =
-        "%{text}",
-      
+      mode = "lines+markers",
       line = list(
-        
-        color =
-          "#7C3AED",
-        
-        width = 3,
-        
-        shape = "spline"
+        width = 3
       ),
-      
       marker = list(
-        
-        color =
-          "#7C3AED",
-        
         size = 5
       ),
-      
-      fill =
-        "tozeroy",
-      
-      fillcolor =
-        "rgba(124,58,237,0.07)"
+      hovertemplate =
+        paste0(
+          "<b>%{x|%d %b %Y}</b><br>",
+          metric_label,
+          ": %{y:,}",
+          "<extra></extra>"
+        )
     ) %>%
       
       layout(
-        
-        margin = list(
-          
-          l = 48,
-          
-          r = 18,
-          
-          t = 10,
-          
-          b = 42
-        ),
-        
         xaxis = list(
-          
-          title = NULL,
-          
-          showgrid = FALSE,
-          
-          zeroline = FALSE
+          title = "",
+          showgrid = FALSE
         ),
-        
-        yaxis = y_axis,
-        
-        hovermode =
-          "x unified",
-        
-        paper_bgcolor =
-          "rgba(0,0,0,0)",
-        
-        plot_bgcolor =
-          "rgba(0,0,0,0)"
-      ) %>%
-      
-      config(
-        plot_config
+        yaxis = list(
+          title = metric_label,
+          gridcolor = "#eeeeee"
+        ),
+        hovermode = "x unified",
+        margin = list(
+          l = 65,
+          r = 20,
+          t = 10,
+          b = 45
+        )
       )
   })
   
   
   # ==========================================================
-  # PERFORMANCE DONUT
+  # 2. PERFORMANCE MIX
   # ==========================================================
   
   output$performance_plot <- renderPlotly({
@@ -3091,131 +1769,65 @@ server <- function(
     d <- filtered_data()
     
     if (nrow(d) == 0) {
-      
       return(
         empty_plot(
-          "No performance data available."
+          "No performance data available"
         )
       )
     }
     
-    perf <- d %>%
-      
-      filter(
-        !is.na(
-          performance_bucket_label
-        )
-      ) %>%
-      
+    perf_data <- d %>%
       count(
         performance_bucket_label,
         name = "posts"
       ) %>%
-      
       arrange(
         desc(posts)
       )
     
-    
-    if (nrow(perf) == 0) {
-      
-      return(
-        empty_plot(
-          "No performance categories available."
-        )
-      )
-    }
-    
-    
-    perf$label <-
-      clean_label(
-        perf$performance_bucket_label
-      )
-    
-    
-    perf$share <-
-      perf$posts /
-      sum(perf$posts)
-    
-    
-    perf$hover <- paste0(
-      
-      "<b>",
-      perf$label,
-      "</b>",
-      
-      "<br>Posts: ",
-      comma(
-        perf$posts
-      ),
-      
-      "<br>Share: ",
-      
-      fmt_percent_vec(
-        perf$share,
-        1
-      ),
-      
-      "<extra></extra>"
+    perf_data$label <- clean_label(
+      perf_data$performance_bucket_label
     )
     
-    
     plot_ly(
-      
-      data = perf,
-      
+      perf_data,
       labels = ~label,
-      
       values = ~posts,
-      
       type = "pie",
+      hole = 0.62,
+      textinfo = "label+percent",
+      sort = FALSE,
       
-      hole = 0.64,
-      
-      textinfo =
-        "label+percent",
-      
-      textposition =
-        "outside",
+      # ======================================================
+      # CORRECTED HOVERTEMPLATE
+      # ======================================================
       
       hovertemplate =
-        ~hover,
-      
-      marker = list(
-        
-        colors = c(
-          "#7C3AED",
-          "#F59E0B",
-          "#10B981",
-          "#EF4444"
-        )
-      )
+        "<b>%{label}</b><br>%{value:,} posts<br>%{percent}<extra></extra>"
     ) %>%
       
       layout(
+        showlegend = TRUE,
+        
+        legend = list(
+          orientation = "h",
+          x = 0.5,
+          xanchor = "center",
+          y = -0.05
+        ),
         
         margin = list(
           l = 10,
           r = 10,
           t = 10,
-          b = 10
-        ),
-        
-        showlegend =
-          FALSE,
-        
-        paper_bgcolor =
-          "rgba(0,0,0,0)"
-      ) %>%
-      
-      config(
-        plot_config
+          b = 40
+        )
       )
   })
   
   
   # ==========================================================
-  # MEDIA TYPE
+  # 3. MEDIA TYPE PERFORMANCE
   # ==========================================================
   
   output$media_plot <- renderPlotly({
@@ -3223,159 +1835,75 @@ server <- function(
     d <- filtered_data()
     
     if (nrow(d) == 0) {
-      
       return(
         empty_plot(
-          "No media data available."
+          "No media type data available"
         )
       )
     }
     
-    media <- d %>%
-      
-      filter(
-        !is.na(media_type)
-      ) %>%
-      
-      group_by(
-        media_type
-      ) %>%
-      
+    media_data <- d %>%
+      group_by(media_type) %>%
       summarise(
-        
-        engagement_rate =
-          safe_mean(
-            engagement_rate
+        avg_engagement =
+          mean(
+            engagement_rate,
+            na.rm = TRUE
           ),
-        
-        posts =
-          n(),
-        
-        .groups =
-          "drop"
+        posts = n(),
+        .groups = "drop"
       ) %>%
-      
       arrange(
-        engagement_rate
+        avg_engagement
       )
     
-    
-    if (nrow(media) == 0) {
-      
-      return(
-        empty_plot(
-          "No media types available."
-        )
-      )
-    }
-    
-    
-    media$label <-
-      clean_label(
-        media$media_type
-      )
-    
-    
-    media$hover <- paste0(
-      
-      "<b>",
-      media$label,
-      "</b>",
-      
-      "<br>Engagement rate: ",
-      
-      fmt_percent_vec(
-        media$engagement_rate,
-        2
-      ),
-      
-      "<br>Posts: ",
-      
-      comma(
-        media$posts
-      ),
-      
-      "<extra></extra>"
+    media_data$label <- clean_label(
+      media_data$media_type
     )
     
-    
     plot_ly(
-      
-      data = media,
-      
-      x =
-        ~engagement_rate,
-      
-      y =
-        ~reorder(
-          label,
-          engagement_rate
-        ),
-      
-      type =
-        "bar",
-      
-      orientation =
-        "h",
-      
-      text =
-        ~hover,
+      media_data,
+      x = ~avg_engagement,
+      y = ~reorder(label, avg_engagement),
+      type = "bar",
+      orientation = "h",
+      text = ~fmt_pct_vec(
+        avg_engagement
+      ),
+      textposition = "outside",
       
       hovertemplate =
-        "%{text}",
+        paste0(
+          "<b>%{y}</b><br>",
+          "Average Engagement: %{x:.2%}<br>",
+          "Posts: %{customdata:,}",
+          "<extra></extra>"
+        ),
       
-      marker = list(
-        
-        color =
-          "#EC4899"
-      )
+      customdata = ~posts
     ) %>%
       
       layout(
-        
-        margin = list(
-          
-          l = 95,
-          
-          r = 20,
-          
-          t = 10,
-          
-          b = 40
-        ),
-        
         xaxis = list(
-          
-          title = NULL,
-          
+          title = "Average Engagement Rate",
           tickformat = ".1%",
-          
-          gridcolor =
-            "#EEF0F4",
-          
-          zeroline = FALSE
+          gridcolor = "#eeeeee"
         ),
-        
         yaxis = list(
-          
-          title = NULL
+          title = ""
         ),
-        
-        paper_bgcolor =
-          "rgba(0,0,0,0)",
-        
-        plot_bgcolor =
-          "rgba(0,0,0,0)"
-      ) %>%
-      
-      config(
-        plot_config
+        margin = list(
+          l = 100,
+          r = 65,
+          t = 15,
+          b = 50
+        )
       )
   })
   
   
   # ==========================================================
-  # TRAFFIC SOURCE
+  # 4. TRAFFIC SOURCE PERFORMANCE
   # ==========================================================
   
   output$traffic_plot <- renderPlotly({
@@ -3383,173 +1911,78 @@ server <- function(
     d <- filtered_data()
     
     if (nrow(d) == 0) {
-      
       return(
         empty_plot(
-          "No traffic-source data available."
+          "No traffic source data available"
         )
       )
     }
     
-    traffic <- d %>%
-      
-      filter(
-        !is.na(
-          traffic_source
-        )
-      ) %>%
-      
-      group_by(
-        traffic_source
-      ) %>%
-      
+    traffic_data <- d %>%
+      group_by(traffic_source) %>%
       summarise(
-        
-        engagement_rate =
-          safe_mean(
-            engagement_rate
-          ),
-        
-        reach =
-          sum(
-            reach,
+        avg_engagement =
+          mean(
+            engagement_rate,
             na.rm = TRUE
           ),
-        
-        posts =
-          n(),
-        
-        .groups =
-          "drop"
+        total_engagement =
+          sum(
+            total_engagement,
+            na.rm = TRUE
+          ),
+        .groups = "drop"
       ) %>%
-      
       arrange(
-        engagement_rate
+        avg_engagement
       )
     
-    
-    if (nrow(traffic) == 0) {
-      
-      return(
-        empty_plot(
-          "No traffic sources available."
-        )
-      )
-    }
-    
-    
-    traffic$label <-
-      clean_label(
-        traffic$traffic_source
-      )
-    
-    
-    traffic$hover <- paste0(
-      
-      "<b>",
-      traffic$label,
-      "</b>",
-      
-      "<br>Engagement rate: ",
-      
-      fmt_percent_vec(
-        traffic$engagement_rate,
-        2
-      ),
-      
-      "<br>Reach: ",
-      
-      fmt_compact(
-        traffic$reach
-      ),
-      
-      "<br>Posts: ",
-      
-      comma(
-        traffic$posts
-      ),
-      
-      "<extra></extra>"
+    traffic_data$label <- clean_label(
+      traffic_data$traffic_source
     )
     
-    
     plot_ly(
-      
-      data = traffic,
-      
-      x =
-        ~engagement_rate,
-      
-      y =
-        ~reorder(
-          label,
-          engagement_rate
-        ),
-      
-      type =
-        "bar",
-      
-      orientation =
-        "h",
-      
-      text =
-        ~hover,
+      traffic_data,
+      x = ~avg_engagement,
+      y = ~reorder(
+        label,
+        avg_engagement
+      ),
+      type = "bar",
+      orientation = "h",
       
       hovertemplate =
-        "%{text}",
+        paste0(
+          "<b>%{y}</b><br>",
+          "Average Engagement: %{x:.2%}<br>",
+          "Total Engagement: %{customdata:,}",
+          "<extra></extra>"
+        ),
       
-      marker = list(
-        
-        color =
-          "#0EA5E9"
-      )
+      customdata = ~total_engagement
     ) %>%
       
       layout(
-        
-        margin = list(
-          
-          l = 105,
-          
-          r = 20,
-          
-          t = 10,
-          
-          b = 40
-        ),
-        
         xaxis = list(
-          
-          title = NULL,
-          
+          title = "Average Engagement Rate",
           tickformat = ".1%",
-          
-          gridcolor =
-            "#EEF0F4",
-          
-          zeroline = FALSE
+          gridcolor = "#eeeeee"
         ),
-        
         yaxis = list(
-          
-          title = NULL
+          title = ""
         ),
-        
-        paper_bgcolor =
-          "rgba(0,0,0,0)",
-        
-        plot_bgcolor =
-          "rgba(0,0,0,0)"
-      ) %>%
-      
-      config(
-        plot_config
+        margin = list(
+          l = 105,
+          r = 50,
+          t = 15,
+          b = 50
+        )
       )
   })
   
   
   # ==========================================================
-  # CONTENT CATEGORY
+  # 5. CATEGORY RANKING
   # ==========================================================
   
   output$category_plot <- renderPlotly({
@@ -3557,171 +1990,83 @@ server <- function(
     d <- filtered_data()
     
     if (nrow(d) == 0) {
-      
       return(
         empty_plot(
-          "No category data available."
+          "No category data available"
         )
       )
     }
     
-    category <- d %>%
-      
-      filter(
-        !is.na(
-          content_category
-        )
-      ) %>%
-      
-      group_by(
-        content_category
-      ) %>%
-      
+    category_data <- d %>%
+      group_by(content_category) %>%
       summarise(
-        
-        engagement_rate =
-          safe_mean(
-            engagement_rate
+        avg_engagement =
+          mean(
+            engagement_rate,
+            na.rm = TRUE
           ),
-        
-        posts =
-          n(),
-        
-        .groups =
-          "drop"
+        total_engagement =
+          sum(
+            total_engagement,
+            na.rm = TRUE
+          ),
+        posts = n(),
+        .groups = "drop"
       ) %>%
-      
       arrange(
-        desc(
-          engagement_rate
-        )
-      ) %>%
-      
-      slice_head(
-        n = 10
-      ) %>%
-      
-      arrange(
-        engagement_rate
+        desc(avg_engagement)
       )
     
-    
-    if (nrow(category) == 0) {
-      
-      return(
-        empty_plot(
-          "No content categories available."
-        )
-      )
-    }
-    
-    
-    category$label <-
-      clean_label(
-        category$content_category
-      )
-    
-    
-    category$hover <- paste0(
-      
-      "<b>",
-      category$label,
-      "</b>",
-      
-      "<br>Engagement rate: ",
-      
-      fmt_percent_vec(
-        category$engagement_rate,
-        2
-      ),
-      
-      "<br>Posts: ",
-      
-      comma(
-        category$posts
-      ),
-      
-      "<extra></extra>"
+    category_data$label <- clean_label(
+      category_data$content_category
     )
     
-    
     plot_ly(
-      
-      data = category,
-      
-      x =
-        ~engagement_rate,
-      
-      y =
-        ~reorder(
-          label,
-          engagement_rate
-        ),
-      
-      type =
-        "bar",
-      
-      orientation =
-        "h",
-      
-      text =
-        ~hover,
+      category_data,
+      x = ~avg_engagement,
+      y = ~reorder(
+        label,
+        avg_engagement
+      ),
+      type = "bar",
+      orientation = "h",
       
       hovertemplate =
-        "%{text}",
+        paste0(
+          "<b>%{y}</b><br>",
+          "Average Engagement: %{x:.2%}<br>",
+          "Total Engagement: %{customdata[1]:,}<br>",
+          "Posts: %{customdata[2]:,}",
+          "<extra></extra>"
+        ),
       
-      marker = list(
-        
-        color =
-          "#7C3AED"
+      customdata = ~cbind(
+        total_engagement,
+        posts
       )
     ) %>%
       
       layout(
-        
-        margin = list(
-          
-          l = 115,
-          
-          r = 20,
-          
-          t = 10,
-          
-          b = 40
-        ),
-        
         xaxis = list(
-          
-          title = NULL,
-          
+          title = "Average Engagement Rate",
           tickformat = ".1%",
-          
-          gridcolor =
-            "#EEF0F4",
-          
-          zeroline = FALSE
+          gridcolor = "#eeeeee"
         ),
-        
         yaxis = list(
-          
-          title = NULL
+          title = ""
         ),
-        
-        paper_bgcolor =
-          "rgba(0,0,0,0)",
-        
-        plot_bgcolor =
-          "rgba(0,0,0,0)"
-      ) %>%
-      
-      config(
-        plot_config
+        margin = list(
+          l = 125,
+          r = 50,
+          t = 15,
+          b = 50
+        )
       )
   })
   
   
   # ==========================================================
-  # POSTING HEATMAP
+  # 6. POSTING TIME HEATMAP
   # ==========================================================
   
   output$heatmap_plot <- renderPlotly({
@@ -3729,17 +2074,14 @@ server <- function(
     d <- filtered_data()
     
     if (nrow(d) == 0) {
-      
       return(
         empty_plot(
-          "No heatmap data available."
+          "No posting-time data available"
         )
       )
     }
     
-    
-    day_order <- c(
-      
+    days <- c(
       "Monday",
       "Tuesday",
       "Wednesday",
@@ -3749,291 +2091,113 @@ server <- function(
       "Sunday"
     )
     
-    
-    d <- d %>%
-      
+    heat_data <- d %>%
       mutate(
-        
-        day_of_week =
-          factor(
-            day_of_week,
-            levels =
-              day_order
-          ),
-        
-        post_hour =
-          as.numeric(
-            post_hour
-          )
-      )
-    
-    
-    heat <- d %>%
-      
-      filter(
-        !is.na(day_of_week),
-        !is.na(post_hour),
-        post_hour >= 0,
-        post_hour <= 23
+        day_of_week = as.character(day_of_week),
+        post_hour = as.numeric(post_hour)
       ) %>%
-      
       group_by(
-        
         day_of_week,
-        
         post_hour
       ) %>%
-      
       summarise(
-        
-        engagement_rate =
-          safe_mean(
-            engagement_rate
+        engagement =
+          mean(
+            engagement_rate,
+            na.rm = TRUE
           ),
-        
-        posts =
-          n(),
-        
-        .groups =
-          "drop"
+        posts = n(),
+        .groups = "drop"
       )
     
-    
-    grid <- expand.grid(
-      
-      day_of_week =
-        factor(
-          day_order,
-          levels =
-            day_order
-        ),
-      
-      post_hour =
-        0:23
-    )
-    
-    
-    heat <- grid %>%
-      
+    heat_data <- expand.grid(
+      day_of_week = days,
+      post_hour = 0:23,
+      stringsAsFactors = FALSE
+    ) %>%
       left_join(
-        
-        heat,
-        
+        heat_data,
         by = c(
           "day_of_week",
           "post_hour"
         )
       )
     
+    heat_data$engagement[
+      is.na(heat_data$engagement)
+    ] <- 0
+    
+    heat_data$posts[
+      is.na(heat_data$posts)
+    ] <- 0
     
     z_matrix <- matrix(
-      
-      heat$engagement_rate,
-      
-      nrow = 7,
-      
+      heat_data$engagement,
+      nrow = length(days),
       ncol = 24,
-      
-      byrow = TRUE
+      byrow = FALSE
     )
     
-    
-    hover_values <-
-      fmt_percent_vec(
-        heat$engagement_rate,
-        2
-      )
-    
-    
-    hover_text <- paste0(
-      
-      "<b>Day: </b>",
-      as.character(
-        heat$day_of_week
-      ),
-      
-      "<br><b>Hour: </b>",
-      sprintf(
-        "%02d:00",
-        heat$post_hour
-      ),
-      
-      "<br><b>Engagement rate: </b>",
-      hover_values,
-      
-      "<br><b>Posts: </b>",
-      
-      ifelse(
-        is.na(heat$posts),
-        "0",
-        comma(
-          heat$posts
-        )
-      ),
-      
-      "<extra></extra>"
+    post_matrix <- matrix(
+      heat_data$posts,
+      nrow = length(days),
+      ncol = 24,
+      byrow = FALSE
     )
-    
-    
-    # Handle completely empty numeric grid
-    valid_rates <-
-      heat$engagement_rate[
-        is.finite(
-          heat$engagement_rate
-        )
-      ]
-    
-    
-    if (
-      length(valid_rates) == 0
-    ) {
-      
-      return(
-        empty_plot(
-          "No engagement-rate observations available."
-        )
-      )
-    }
-    
     
     plot_ly(
-      
       x = 0:23,
-      
-      y = day_order,
-      
+      y = days,
       z = z_matrix,
-      
       type = "heatmap",
       
-      text =
-        matrix(
-          hover_text,
-          nrow = 7,
-          ncol = 24,
-          byrow = TRUE
-        ),
+      customdata = post_matrix,
       
       hovertemplate =
-        "%{text}",
-      
-      colorscale = list(
-        
-        c(
-          0,
-          "#F4F1FB"
-        ),
-        
-        c(
-          0.25,
-          "#DDD2F6"
-        ),
-        
-        c(
-          0.50,
-          "#B9A5EA"
-        ),
-        
-        c(
-          0.75,
-          "#9472D9"
-        ),
-        
-        c(
-          1,
-          "#6D28D9"
+        paste0(
+          "<b>%{y}</b><br>",
+          "Hour: %{x}:00<br>",
+          "Engagement Rate: %{z:.2%}<br>",
+          "Posts: %{customdata:,}",
+          "<extra></extra>"
         )
-      ),
-      
-      zmin =
-        min(
-          valid_rates
-        ),
-      
-      zmax =
-        max(
-          valid_rates
-        ),
-      
-      colorbar = list(
-        
-        title =
-          "Engagement",
-        
-        tickformat =
-          ".1%"
-      )
     ) %>%
       
       layout(
-        
-        margin = list(
-          
-          l = 75,
-          
-          r = 65,
-          
-          t = 20,
-          
-          b = 45
-        ),
-        
         xaxis = list(
-          
-          title =
-            "Posting hour",
-          
-          dtick =
-            2,
-          
-          gridcolor =
-            "rgba(255,255,255,0)"
+          title = "Posting Hour",
+          dtick = 1
         ),
-        
         yaxis = list(
-          
-          title =
-            NULL,
-          
-          categoryorder =
-            "array",
-          
-          categoryarray =
-            day_order
+          title = ""
         ),
-        
-        paper_bgcolor =
-          "rgba(0,0,0,0)",
-        
-        plot_bgcolor =
-          "rgba(0,0,0,0)"
-      ) %>%
-      
-      config(
-        plot_config
+        margin = list(
+          l = 90,
+          r = 20,
+          t = 15,
+          b = 55
+        )
       )
   })
   
   
   # ==========================================================
-  # ENGAGEMENT COMPOSITION
+  # 7. ENGAGEMENT COMPOSITION
   # ==========================================================
   
-  output$engagement_plot <- renderPlotly({
+  output$composition_plot <- renderPlotly({
     
     d <- filtered_data()
     
     if (nrow(d) == 0) {
-      
       return(
         empty_plot(
-          "No engagement data available."
+          "No engagement data available"
         )
       )
     }
     
-    
-    engagement <- data.frame(
+    composition_data <- data.frame(
       
       type = c(
         "Likes",
@@ -4043,145 +2207,286 @@ server <- function(
       ),
       
       value = c(
-        
-        sum(
-          d$likes,
-          na.rm = TRUE
-        ),
-        
-        sum(
-          d$comments,
-          na.rm = TRUE
-        ),
-        
-        sum(
-          d$shares,
-          na.rm = TRUE
-        ),
-        
-        sum(
-          d$saves,
-          na.rm = TRUE
-        )
+        safe_sum(d$likes),
+        safe_sum(d$comments),
+        safe_sum(d$shares),
+        safe_sum(d$saves)
       )
     )
     
-    
-    total_value <-
-      sum(
-        engagement$value,
-        na.rm = TRUE
-      )
-    
-    
-    if (
-      total_value <= 0
-    ) {
+    plot_ly(
+      composition_data,
+      labels = ~type,
+      values = ~value,
+      type = "pie",
+      hole = 0.58,
       
+      hovertemplate =
+        "<b>%{label}</b><br>%{value:,} interactions<br>%{percent}<extra></extra>"
+    ) %>%
+      
+      layout(
+        showlegend = TRUE,
+        
+        legend = list(
+          orientation = "h",
+          x = 0.5,
+          xanchor = "center",
+          y = -0.05
+        ),
+        
+        margin = list(
+          l = 10,
+          r = 10,
+          t = 10,
+          b = 40
+        )
+      )
+  })
+  
+  
+  # ==========================================================
+  # 8. REACH VS ENGAGEMENT
+  # ==========================================================
+  
+  output$scatter_plot <- renderPlotly({
+    
+    d <- filtered_data()
+    
+    if (nrow(d) == 0) {
       return(
         empty_plot(
-          "No engagement interactions available."
+          "No scatter plot data available"
         )
       )
     }
     
+    scatter_data <- d %>%
+      filter(
+        !is.na(reach),
+        !is.na(total_engagement),
+        reach > 0
+      )
     
-    engagement$share <-
-      engagement$value /
-      total_value
-    
-    
-    engagement$hover <- paste0(
-      
-      "<b>",
-      engagement$type,
-      "</b>",
-      
-      "<br>Total: ",
-      
-      comma(
-        engagement$value
-      ),
-      
-      "<br>Share: ",
-      
-      fmt_percent_vec(
-        engagement$share,
-        1
-      ),
-      
-      "<extra></extra>"
-    )
-    
-    
-    plot_ly(
-      
-      data = engagement,
-      
-      x = ~type,
-      
-      y = ~value,
-      
-      type = "bar",
-      
-      text = ~hover,
-      
-      hovertemplate =
-        "%{text}",
-      
-      marker = list(
-        
-        color = c(
-          "#7C3AED",
-          "#EC4899",
-          "#0EA5E9",
-          "#10B981"
+    if (nrow(scatter_data) == 0) {
+      return(
+        empty_plot(
+          "No valid reach/engagement data"
         )
       )
+    }
+    
+    if (nrow(scatter_data) > 7000) {
+      
+      set.seed(42)
+      
+      scatter_data <- scatter_data %>%
+        slice_sample(
+          n = 7000
+        )
+    }
+    
+    plot_ly(
+      scatter_data,
+      x = ~reach,
+      y = ~total_engagement,
+      type = "scatter",
+      mode = "markers",
+      
+      marker = list(
+        size = 6,
+        opacity = 0.55
+      ),
+      
+      text = ~paste(
+        "Post:", post_id,
+        "<br>Media:", media_type,
+        "<br>Category:", content_category,
+        "<br>Reach:", fmt_integer(reach),
+        "<br>Engagement:", fmt_integer(total_engagement)
+      ),
+      
+      hovertemplate =
+        "%{text}<extra></extra>"
     ) %>%
       
       layout(
-        
-        margin = list(
-          
-          l = 55,
-          
-          r = 20,
-          
-          t = 15,
-          
-          b = 55
-        ),
-        
         xaxis = list(
-          
-          title = NULL
+          title = "Reach",
+          type = "log",
+          gridcolor = "#eeeeee"
         ),
-        
         yaxis = list(
-          
-          title =
-            "Interactions",
-          
-          gridcolor =
-            "#EEF0F4",
-          
-          zeroline =
-            FALSE,
-          
-          separatethousands =
-            TRUE
+          title = "Total Engagement",
+          type = "log",
+          gridcolor = "#eeeeee"
         ),
-        
-        paper_bgcolor =
-          "rgba(0,0,0,0)",
-        
-        plot_bgcolor =
-          "rgba(0,0,0,0)"
-      ) %>%
+        margin = list(
+          l = 65,
+          r = 20,
+          t = 15,
+          b = 55
+        )
+      )
+  })
+  
+  
+  # ==========================================================
+  # 9. CTA IMPACT
+  # ==========================================================
+  
+  output$cta_plot <- renderPlotly({
+    
+    d <- filtered_data()
+    
+    if (nrow(d) == 0) {
+      return(
+        empty_plot(
+          "No CTA data available"
+        )
+      )
+    }
+    
+    cta_data <- d %>%
+      group_by(has_call_to_action) %>%
+      summarise(
+        avg_engagement =
+          mean(
+            engagement_rate,
+            na.rm = TRUE
+          ),
+        posts = n(),
+        .groups = "drop"
+      )
+    
+    cta_data$label <- ifelse(
+      cta_data$has_call_to_action %in%
+        c("true", "yes", "1"),
+      "With CTA",
+      "Without CTA"
+    )
+    
+    plot_ly(
+      cta_data,
+      x = ~label,
+      y = ~avg_engagement,
+      type = "bar",
       
-      config(
-        plot_config
+      text = ~fmt_pct_vec(
+        avg_engagement
+      ),
+      
+      textposition = "outside",
+      
+      hovertemplate =
+        paste0(
+          "<b>%{x}</b><br>",
+          "Average Engagement: %{y:.2%}<br>",
+          "Posts: %{customdata:,}",
+          "<extra></extra>"
+        ),
+      
+      customdata = ~posts
+    ) %>%
+      
+      layout(
+        xaxis = list(
+          title = ""
+        ),
+        yaxis = list(
+          title = "Average Engagement Rate",
+          tickformat = ".1%",
+          gridcolor = "#eeeeee"
+        ),
+        margin = list(
+          l = 70,
+          r = 30,
+          t = 15,
+          b = 55
+        )
+      )
+  })
+  
+  
+  # ==========================================================
+  # 10. ACCOUNT PERFORMANCE
+  # ==========================================================
+  
+  output$account_plot <- renderPlotly({
+    
+    d <- filtered_data()
+    
+    if (nrow(d) == 0) {
+      return(
+        empty_plot(
+          "No account data available"
+        )
+      )
+    }
+    
+    account_data <- d %>%
+      group_by(account_id) %>%
+      summarise(
+        avg_engagement =
+          mean(
+            engagement_rate,
+            na.rm = TRUE
+          ),
+        posts = n(),
+        .groups = "drop"
+      ) %>%
+      arrange(
+        desc(avg_engagement)
+      ) %>%
+      slice_head(
+        n = 10
+      ) %>%
+      arrange(
+        avg_engagement
+      )
+    
+    plot_ly(
+      account_data,
+      x = ~avg_engagement,
+      y = ~reorder(
+        as.character(account_id),
+        avg_engagement
+      ),
+      type = "bar",
+      orientation = "h",
+      
+      text = ~fmt_pct_vec(
+        avg_engagement
+      ),
+      
+      textposition = "outside",
+      
+      hovertemplate =
+        paste0(
+          "<b>Account %{y}</b><br>",
+          "Average Engagement: %{x:.2%}<br>",
+          "Posts: %{customdata:,}",
+          "<extra></extra>"
+        ),
+      
+      customdata = ~posts
+    ) %>%
+      
+      layout(
+        xaxis = list(
+          title = "Average Engagement Rate",
+          tickformat = ".1%",
+          gridcolor = "#eeeeee"
+        ),
+        yaxis = list(
+          title = ""
+        ),
+        margin = list(
+          l = 90,
+          r = 60,
+          t = 15,
+          b = 50
+        )
       )
   })
   
@@ -4197,24 +2502,17 @@ server <- function(
     if (nrow(d) == 0) {
       
       return(
-        
         div(
-          
-          class =
-            "insight-grid",
+          class = "insight-box",
           
           div(
-            
-            class =
-              "insight-item",
-            
-            strong(
-              "No data selected"
-            ),
-            
-            span(
-              "Change the filters to generate data-driven insights."
-            )
+            class = "insight-title",
+            "No Insights Available"
+          ),
+          
+          div(
+            class = "insight-text",
+            "There are no records matching the selected filters. Try expanding the date range or removing one or more filters."
           )
         )
       )
@@ -4226,50 +2524,28 @@ server <- function(
     # --------------------------------------------------------
     
     media_summary <- d %>%
-      
-      filter(
-        !is.na(
-          media_type
-        )
-      ) %>%
-      
-      group_by(
-        media_type
-      ) %>%
-      
+      group_by(media_type) %>%
       summarise(
-        
-        rate =
-          safe_mean(
-            engagement_rate
-          ),
-        
-        .groups =
-          "drop"
+        engagement =
+          safe_mean(engagement_rate),
+        .groups = "drop"
       ) %>%
-      
       arrange(
-        desc(rate)
+        desc(engagement)
       )
     
-    
-    if (nrow(media_summary) > 0) {
-      
-      best_media <-
-        clean_label(
-          media_summary$media_type[1]
-        )
-      
-      best_media_rate <-
-        media_summary$rate[1]
-      
+    best_media <- if (nrow(media_summary) > 0) {
+      as.character(
+        media_summary$media_type[1]
+      )
     } else {
-      
-      best_media <-
-        "N/A"
-      
-      best_media_rate <-
-        0
+      "N/A"
+    }
+    
+    best_media_rate <- if (nrow(media_summary) > 0) {
+      media_summary$engagement[1]
+    } else {
+      0
     }
     
     
@@ -4278,46 +2554,28 @@ server <- function(
     # --------------------------------------------------------
     
     category_summary <- d %>%
-      
-      filter(
-        !is.na(
-          content_category
-        )
-      ) %>%
-      
-      group_by(
-        content_category
-      ) %>%
-      
+      group_by(content_category) %>%
       summarise(
-        
-        rate =
-          safe_mean(
-            engagement_rate
-          ),
-        
-        .groups =
-          "drop"
+        engagement =
+          safe_mean(engagement_rate),
+        .groups = "drop"
       ) %>%
-      
       arrange(
-        desc(rate)
+        desc(engagement)
       )
     
-    
-    if (
-      nrow(category_summary) > 0
-    ) {
-      
-      best_category <-
-        clean_label(
-          category_summary$content_category[1]
-        )
-      
+    best_category <- if (nrow(category_summary) > 0) {
+      as.character(
+        category_summary$content_category[1]
+      )
     } else {
-      
-      best_category <-
-        "N/A"
+      "N/A"
+    }
+    
+    best_category_rate <- if (nrow(category_summary) > 0) {
+      category_summary$engagement[1]
+    } else {
+      0
     }
     
     
@@ -4325,292 +2583,203 @@ server <- function(
     # Best traffic source
     # --------------------------------------------------------
     
-    source_summary <- d %>%
-      
-      filter(
-        !is.na(
-          traffic_source
-        )
-      ) %>%
-      
-      group_by(
-        traffic_source
-      ) %>%
-      
+    traffic_summary <- d %>%
+      group_by(traffic_source) %>%
       summarise(
-        
-        rate =
-          safe_mean(
-            engagement_rate
-          ),
-        
-        .groups =
-          "drop"
+        engagement =
+          safe_mean(engagement_rate),
+        .groups = "drop"
       ) %>%
-      
       arrange(
-        desc(rate)
+        desc(engagement)
       )
     
-    
-    if (
-      nrow(source_summary) > 0
-    ) {
-      
-      best_source <-
-        clean_label(
-          source_summary$traffic_source[1]
-        )
-      
+    best_traffic <- if (nrow(traffic_summary) > 0) {
+      as.character(
+        traffic_summary$traffic_source[1]
+      )
     } else {
-      
-      best_source <-
-        "N/A"
+      "N/A"
     }
     
     
     # --------------------------------------------------------
-    # Best day/hour
+    # Best posting hour
     # --------------------------------------------------------
     
-    timing_summary <- d %>%
-      
-      filter(
-        !is.na(day_of_week),
-        !is.na(post_hour)
-      ) %>%
-      
-      group_by(
-        
-        day_of_week,
-        
-        post_hour
-      ) %>%
-      
+    hour_summary <- d %>%
+      group_by(post_hour) %>%
       summarise(
-        
-        rate =
-          safe_mean(
-            engagement_rate
-          ),
-        
-        posts =
-          n(),
-        
-        .groups =
-          "drop"
+        engagement =
+          safe_mean(engagement_rate),
+        .groups = "drop"
       ) %>%
-      
-      filter(
-        is.finite(rate)
-      ) %>%
-      
       arrange(
-        desc(rate)
+        desc(engagement)
       )
     
-    
-    if (
-      nrow(timing_summary) > 0
-    ) {
-      
-      best_day <-
-        clean_label(
-          timing_summary$day_of_week[1]
-        )
-      
-      best_hour <-
-        timing_summary$post_hour[1]
-      
+    best_hour <- if (nrow(hour_summary) > 0) {
+      hour_summary$post_hour[1]
     } else {
-      
-      best_day <-
-        "N/A"
-      
-      best_hour <-
-        NA
+      NA
     }
     
     
     # --------------------------------------------------------
-    # Dominant performance
+    # Best day
     # --------------------------------------------------------
     
-    performance_summary <- d %>%
-      
-      filter(
-        !is.na(
-          performance_bucket_label
-        )
+    day_summary <- d %>%
+      group_by(day_of_week) %>%
+      summarise(
+        engagement =
+          safe_mean(engagement_rate),
+        .groups = "drop"
       ) %>%
-      
-      count(
-        performance_bucket_label,
-        sort = TRUE
+      arrange(
+        desc(engagement)
       )
     
-    
-    if (
-      nrow(performance_summary) > 0
-    ) {
-      
-      dominant_performance <-
-        clean_label(
-          performance_summary$performance_bucket_label[1]
-        )
-      
+    best_day <- if (nrow(day_summary) > 0) {
+      as.character(
+        day_summary$day_of_week[1]
+      )
     } else {
-      
-      dominant_performance <-
-        "N/A"
+      "N/A"
     }
     
     
     # --------------------------------------------------------
-    # Best hour text
+    # Overall engagement
     # --------------------------------------------------------
     
-    if (
-      is.na(best_hour)
-    ) {
-      
-      best_time_text <-
-        "N/A"
-      
-    } else {
-      
-      best_time_text <-
-        paste0(
-          best_day,
-          " at ",
-          sprintf(
-            "%02d:00",
-            as.integer(
-              best_hour
-            )
-          )
-        )
-    }
+    overall_rate <- safe_mean(
+      d$engagement_rate
+    )
     
     
     # --------------------------------------------------------
-    # UI
+    # Insight UI
     # --------------------------------------------------------
     
-    div(
-      
-      class =
-        "insight-grid",
+    tagList(
       
       div(
+        class = "insight-box",
         
-        class =
-          "insight-item",
-        
-        strong(
-          paste0(
-            "Best format · ",
-            best_media
-          )
+        div(
+          class = "insight-title",
+          icon("bullseye"),
+          " Overall Performance"
         ),
         
-        span(
+        div(
+          class = "insight-text",
+          
           paste0(
-            "Average engagement rate: ",
-            fmt_percent(
-              best_media_rate,
-              2
+            "The selected dataset contains ",
+            format(
+              nrow(d),
+              big.mark = ","
             ),
+            " posts with an average engagement rate of ",
+            fmt_pct(overall_rate),
             "."
           )
         )
       ),
       
+      
       div(
+        class = "insight-box",
         
-        class =
-          "insight-item",
-        
-        strong(
-          paste0(
-            "Top category · ",
-            best_category
-          )
+        div(
+          class = "insight-title",
+          icon("image"),
+          " Best Media Type"
         ),
         
-        span(
-          "This category currently leads the filtered content groups by average engagement rate."
+        div(
+          class = "insight-text",
+          
+          paste0(
+            clean_label(best_media),
+            " currently has the highest average engagement rate at ",
+            fmt_pct(best_media_rate),
+            "."
+          )
         )
       ),
       
+      
       div(
+        class = "insight-box",
         
-        class =
-          "insight-item",
-        
-        strong(
-          paste0(
-            "Strongest source · ",
-            best_source
-          )
+        div(
+          class = "insight-title",
+          icon("layer-group"),
+          " Best Content Category"
         ),
         
-        span(
-          "This source currently produces the highest average engagement rate."
+        div(
+          class = "insight-text",
+          
+          paste0(
+            clean_label(best_category),
+            " is the strongest content category with an average engagement rate of ",
+            fmt_pct(best_category_rate),
+            "."
+          )
         )
       ),
       
+      
       div(
+        class = "insight-box",
         
-        class =
-          "insight-item",
-        
-        strong(
-          paste0(
-            "Best publishing window · ",
-            best_time_text
-          )
+        div(
+          class = "insight-title",
+          icon("bolt"),
+          " Traffic Source"
         ),
         
-        span(
-          "Based on the highest observed average engagement rate across day and posting hour."
+        div(
+          class = "insight-text",
+          
+          paste0(
+            clean_label(best_traffic),
+            " is currently the strongest traffic source based on average engagement."
+          )
         )
       ),
       
-      div(
-        
-        class =
-          "insight-item",
-        
-        strong(
-          paste0(
-            "Dominant performance · ",
-            dominant_performance
-          )
-        ),
-        
-        span(
-          "This performance bucket contains the largest number of posts in the current selection."
-        )
-      ),
       
       div(
+        class = "insight-box",
         
-        class =
-          "insight-item",
+        div(
+          class = "insight-title",
+          icon("clock"),
+          " Posting Timing"
+        ),
         
-        strong(
+        div(
+          class = "insight-text",
+          
           paste0(
-            "Current sample · ",
-            comma(
-              nrow(d)
+            "The highest average engagement is observed around ",
+            ifelse(
+              is.na(best_hour),
+              "N/A",
+              paste0(
+                best_hour,
+                ":00"
+              )
             ),
-            " posts"
+            " on ",
+            clean_label(best_day),
+            "."
           )
-        ),
-        
-        span(
-          "All metrics and insights update automatically when filters change."
         )
       )
     )
@@ -4618,7 +2787,7 @@ server <- function(
   
   
   # ==========================================================
-  # TOP POSTS TABLE
+  # TOP 10 POSTS
   # ==========================================================
   
   output$top_posts <- renderDT({
@@ -4633,95 +2802,70 @@ server <- function(
             Message =
               "No posts match the selected filters."
           ),
-          rownames = FALSE,
           options = list(
             dom = "t"
-          )
+          ),
+          rownames = FALSE
         )
       )
     }
     
     
-    top <- d %>%
-      
+    top_data <- d %>%
       arrange(
-        desc(
-          engagement_rate
-        )
+        desc(total_engagement)
       ) %>%
-      
       slice_head(
         n = 10
       ) %>%
-      
-      select(
+      transmute(
         
-        post_id,
+        `Post ID` = post_id,
         
-        account_type,
+        `Account` = account_id,
         
-        media_type,
+        `Media Type` =
+          clean_label(media_type),
         
-        content_category,
+        `Category` =
+          clean_label(content_category),
         
-        engagement_rate,
+        `Likes` =
+          likes,
         
-        total_engagement,
+        `Comments` =
+          comments,
         
-        reach,
+        `Shares` =
+          shares,
         
-        likes,
+        `Saves` =
+          saves,
         
-        comments,
+        `Total Engagement` =
+          total_engagement,
         
-        shares,
+        `Reach` =
+          reach,
         
-        saves,
+        `Engagement Rate` =
+          fmt_pct_vec(engagement_rate),
         
-        followers_gained
+        `Performance` =
+          clean_label(
+            performance_bucket_label
+          )
       )
     
     
-    names(top) <- c(
-      
-      "Post ID",
-      
-      "Account",
-      
-      "Media",
-      
-      "Category",
-      
-      "Engagement Rate",
-      
-      "Total Engagement",
-      
-      "Reach",
-      
-      "Likes",
-      
-      "Comments",
-      
-      "Shares",
-      
-      "Saves",
-      
-      "Followers Gained"
-    )
-    
-    
     datatable(
-      
-      top,
+      top_data,
       
       rownames = FALSE,
       
       filter = "top",
       
-      selection = "none",
-      
-      class =
-        "stripe hover nowrap",
+      extensions = "Buttons",
       
       options = list(
         
@@ -4729,59 +2873,25 @@ server <- function(
         
         lengthChange = FALSE,
         
-        searching = TRUE,
-        
-        ordering = TRUE,
-        
-        info = TRUE,
-        
         autoWidth = TRUE,
         
         scrollX = TRUE,
         
-        dom = "frtip",
+        dom =
+          '<"top"f>rt<"bottom"ip>',
         
-        language = list(
-          
-          search =
-            "Search posts:",
-          
-          info =
-            "_START_–_END_ of _TOTAL_ posts"
+        columnDefs = list(
+          list(
+            className = "dt-center",
+            targets = c(
+              0, 1, 2, 3,
+              4, 5, 6, 7,
+              8, 9, 10, 11
+            )
+          )
         )
       )
-    ) %>%
-      
-      formatPercentage(
-        
-        "Engagement Rate",
-        
-        digits = 2
-      ) %>%
-      
-      formatRound(
-        
-        c(
-          
-          "Total Engagement",
-          
-          "Reach",
-          
-          "Likes",
-          
-          "Comments",
-          
-          "Shares",
-          
-          "Saves",
-          
-          "Followers Gained"
-        ),
-        
-        digits = 0,
-        
-        mark = ","
-      )
+    )
   })
   
   
@@ -4789,31 +2899,31 @@ server <- function(
   # DOWNLOAD FILTERED DATA
   # ==========================================================
   
-  output$download_data <-
-    downloadHandler(
+  output$download_data <- downloadHandler(
+    
+    filename = function() {
       
-      filename = function() {
-        
-        paste0(
-          "Instagram_Analytics_Filtered_",
-          Sys.Date(),
-          ".csv"
-        )
-      },
+      paste0(
+        "Instagram_Analytics_Filtered_",
+        Sys.Date(),
+        ".csv"
+      )
+    },
+    
+    content = function(file) {
       
-      content = function(file) {
-        
-        write_csv(
-          filtered_data(),
-          file
-        )
-      }
-    )
+      write.csv(
+        filtered_data(),
+        file,
+        row.names = FALSE
+      )
+    }
+  )
 }
 
 
 # ============================================================
-# 10. RUN APPLICATION
+# 9. RUN APPLICATION
 # ============================================================
 
 shinyApp(
